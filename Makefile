@@ -82,7 +82,11 @@ stw-mt-property-test-short: $(BIN)
 	$(CRYSTAL) build -Dgc_none -Dgcry_block_headers bench/stw_mt_property_test.cr -o $(BIN)/stw_mt_property_test_hdr --error-trace
 	GCRY_BITMAP_ALLOC=0 $(BIN)/stw_mt_property_test_hdr --tlab --seed=1 --iterations=50 --workers=2,4
 	GCRY_BITMAP_ALLOC=0 $(BIN)/stw_mt_property_test_hdr --tlab --nursery --seed=1 --iterations=50 --workers=2,4
-	GCRY_BITMAP_ALLOC=0 GCRY_PARALLEL_DORMANT=1 timeout 300 $(BIN)/stw_mt_property_test_hdr --tlab --seed=1 --iterations=100 --workers=2,4
+	# The dormant arm: the TLAB refill revived dormant chunks by retaking the
+	# alloc spin lock and hung. `perl -e alarm` bounds it where macOS has no
+	# `timeout`; a hang dies of SIGALRM and the target fails.
+	GCRY_BITMAP_ALLOC=0 GCRY_PARALLEL_DORMANT=1 perl -e 'alarm shift; exec @ARGV or die' 300 \
+	  $(BIN)/stw_mt_property_test_hdr --tlab --seed=1 --iterations=100 --workers=2,4
 
 pattern-fuzz: $(BIN)
 	$(CRYSTAL) build -Dgc_none bench/pattern_fuzz.cr -o $(BIN)/pattern_fuzz
