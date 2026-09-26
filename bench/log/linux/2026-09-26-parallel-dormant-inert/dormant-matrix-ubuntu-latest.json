@@ -1,0 +1,374 @@
+{
+ "ec1/tuned": [
+  {
+   "rps": 51957.17,
+   "pause_ms": 0.818714,
+   "rss_kib": 14504,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 52577.16,
+   "pause_ms": 0.786036,
+   "rss_kib": 15020,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 55729.02,
+   "pause_ms": 0.7722,
+   "rss_kib": 14904,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 55642.46,
+   "pause_ms": 0.787962,
+   "rss_kib": 15020,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 52641.13,
+   "pause_ms": 0.775389,
+   "rss_kib": 14932,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 51157.12,
+   "pause_ms": 0.771531,
+   "rss_kib": 15064,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 50854.42,
+   "pause_ms": 0.800661,
+   "rss_kib": 14596,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 50623.36,
+   "pause_ms": 0.809137,
+   "rss_kib": 15168,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 49035.01,
+   "pause_ms": 0.784403,
+   "rss_kib": 14720,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 51958.65,
+   "pause_ms": 0.840072,
+   "rss_kib": 15192,
+   "soundness": "tuned"
+  }
+ ],
+ "ec1/dormant": [
+  {
+   "rps": 52852.9,
+   "pause_ms": 0.788177,
+   "rss_kib": 15668,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 51400.94,
+   "pause_ms": 0.794003,
+   "rss_kib": 15348,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 59881.81,
+   "pause_ms": 0.757661,
+   "rss_kib": 15696,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 50716.3,
+   "pause_ms": 0.775788,
+   "rss_kib": 15488,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 56191.95,
+   "pause_ms": 0.768822,
+   "rss_kib": 15492,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 54670.95,
+   "pause_ms": 0.792483,
+   "rss_kib": 17368,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 53906.05,
+   "pause_ms": 0.809909,
+   "rss_kib": 15732,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 54079.09,
+   "pause_ms": 0.791461,
+   "rss_kib": 15360,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 54052.03,
+   "pause_ms": 0.788786,
+   "rss_kib": 15184,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 53322.62,
+   "pause_ms": 0.80964,
+   "rss_kib": 15396,
+   "soundness": "tuned"
+  }
+ ],
+ "ec1+thread/tuned": [
+  {
+   "rps": 53164.71,
+   "pause_ms": 2.024678,
+   "rss_kib": 31832,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 52035.12,
+   "pause_ms": 2.055845,
+   "rss_kib": 32144,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 50422.91,
+   "pause_ms": 2.05541,
+   "rss_kib": 31744,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 49110.49,
+   "pause_ms": 2.01158,
+   "rss_kib": 31920,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 51822.45,
+   "pause_ms": 2.081786,
+   "rss_kib": 31772,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 50532.6,
+   "pause_ms": 2.138744,
+   "rss_kib": 31888,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 50840.35,
+   "pause_ms": 2.037295,
+   "rss_kib": 31636,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 52212.92,
+   "pause_ms": 1.951633,
+   "rss_kib": 31900,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 53238.28,
+   "pause_ms": 1.987365,
+   "rss_kib": 31736,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 51821.27,
+   "pause_ms": 2.029148,
+   "rss_kib": 31684,
+   "soundness": "tuned"
+  }
+ ],
+ "ec1+thread/dormant": [
+  {
+   "rps": 51571.74,
+   "pause_ms": 1.999066,
+   "rss_kib": 15576,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 51352.99,
+   "pause_ms": 1.948047,
+   "rss_kib": 15780,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 50633.62,
+   "pause_ms": 2.002866,
+   "rss_kib": 15588,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 52720.11,
+   "pause_ms": 1.997341,
+   "rss_kib": 15516,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 52653.95,
+   "pause_ms": 2.00388,
+   "rss_kib": 15704,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 50155.24,
+   "pause_ms": 2.060666,
+   "rss_kib": 15644,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 54241.61,
+   "pause_ms": 1.987568,
+   "rss_kib": 15620,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 54178.87,
+   "pause_ms": 2.012273,
+   "rss_kib": 15804,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 52295.9,
+   "pause_ms": 1.992064,
+   "rss_kib": 15756,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 53836.93,
+   "pause_ms": 2.010613,
+   "rss_kib": 15728,
+   "soundness": "tuned"
+  }
+ ],
+ "ec4/tuned": [
+  {
+   "rps": 75491.93,
+   "pause_ms": 2.469635,
+   "rss_kib": 86508,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 79068.43,
+   "pause_ms": 2.560386,
+   "rss_kib": 86516,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 76295.06,
+   "pause_ms": 2.52005,
+   "rss_kib": 86260,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 76391.89,
+   "pause_ms": 2.41994,
+   "rss_kib": 86424,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 74774.25,
+   "pause_ms": 2.521077,
+   "rss_kib": 86364,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 76137.99,
+   "pause_ms": 2.541376,
+   "rss_kib": 86364,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 76679.44,
+   "pause_ms": 2.5162,
+   "rss_kib": 86428,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 75619.78,
+   "pause_ms": 2.504051,
+   "rss_kib": 88336,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 71533.33,
+   "pause_ms": 2.451422,
+   "rss_kib": 86184,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 80482.72,
+   "pause_ms": 2.552022,
+   "rss_kib": 86456,
+   "soundness": "tuned"
+  }
+ ],
+ "ec4/dormant": [
+  {
+   "rps": 76370.16,
+   "pause_ms": 2.629702,
+   "rss_kib": 21028,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 76948.04,
+   "pause_ms": 2.578828,
+   "rss_kib": 21736,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 71439.31,
+   "pause_ms": 2.515643,
+   "rss_kib": 21044,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 78439.57,
+   "pause_ms": 2.466752,
+   "rss_kib": 21408,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 81695.91,
+   "pause_ms": 2.610972,
+   "rss_kib": 21364,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 79593.28,
+   "pause_ms": 2.601667,
+   "rss_kib": 21536,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 77898.25,
+   "pause_ms": 2.466186,
+   "rss_kib": 21624,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 81045.9,
+   "pause_ms": 2.503964,
+   "rss_kib": 21296,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 78265.05,
+   "pause_ms": 2.516083,
+   "rss_kib": 21668,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 75754.72,
+   "pause_ms": 2.515196,
+   "rss_kib": 21336,
+   "soundness": "tuned"
+  }
+ ]
+}

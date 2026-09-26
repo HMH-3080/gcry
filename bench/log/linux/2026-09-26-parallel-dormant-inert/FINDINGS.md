@@ -48,3 +48,23 @@ dormant, and the gate requires that. With the fix reverted by hand,
 
 Throughput with the opt-in (2026-08-01: "~75% `/json` at ~1.7× Boehm" at
 EC4). It stays opt-in; nothing about the default changed.
+
+## The paired cost, and macOS (same day, later)
+
+`bench/sound_matrix.py --profile dormant:GCRY_PARALLEL_DORMANT=1`, 10 rounds
+on the CI runners (run `36266146696`, `dormant-matrix-*.json`), knob ÷ tuned:
+
+| shape | Linux req/s | Linux pause | Linux RSS | macOS req/s | macOS RSS |
+|---|---|---:|---:|---|---:|
+| EC1 | 1.064 | 0.99× | 1.03× | 0.981 | **1.69×** |
+| EC1 + one thread | 1.010 | 0.98× | **0.49×** | 0.882 | 0.99× |
+| EC4 | 1.021 | 1.01× | **0.25×** | 1.075 | 1.05× |
+
+On Linux the opt-in now costs nothing measurable and takes three quarters off
+the post-GC RSS at EC4. That is not what August measured (thr ~4% lower,
+before the bitmap allocator and today's fixes). On macOS it bought nothing
+and cost +69% at EC1, because release there is `MADV_FREE` (see the ROADMAP
+page-release item). The 64 MiB budget turned empties the EC1 path would have
+munmapped into dormant ones that stayed resident. So the budget raise is
+Linux-only (`ecb4bc4`), and on Darwin `make parallel-dormant` reports without
+asserting.
