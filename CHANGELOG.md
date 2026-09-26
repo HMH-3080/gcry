@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Reviving a dormant chunk could hand out blocks the collector was about to
+  zero.** The header allocator's revival cleared the chunk's DORMANT flag
+  first and installed its freelist after. A thread suspended in between left
+  a chunk the stop-the-world sweep read as free and not dormant, so the sweep
+  made it dormant again. The revival then installed its chain anyway, and the
+  post-STW release zeroed objects already allocated from it (`root N cookie
+  broken`). It needs `-Dgcry_block_headers`, `GCRY_BITMAP_ALLOC=0` and dormant
+  chunks. With TLAB it ran 4 of 79 stress-campaign runs and about 1 in 170
+  locally once the hang below was fixed. The flag is now the last thing a
+  revival changes. `make chunk-search-race` schedules a sweep at that moment
+  (`handoff-header-dormant`), and on the old code it fails every run.
+
 - **A headered build with TLAB and `GCRY_PARALLEL_DORMANT` hung.** The TLAB
   refill holds the alloc lock, and reviving a dormant chunk from there took
   that spin lock again, which spins forever. Since 0.24.1; it needs

@@ -1970,44 +1970,85 @@ module Gcry
     end
 
     # Fault a dormant empty chunk back in and install its freelist.
+    #
+    # The chunk stays DORMANT until its freelist is installed, and both happen
+    # under `@alloc_lock` with the flag flipped last. Until 2026-09-27 the flag
+    # went first and the headers were rewritten after it. A reviver suspended
+    # there left a chunk the STW sweep reads as not dormant and entirely free,
+    # so the sweep made it dormant again and rebuilt the class freelist without
+    # it. The reviver then resumed and installed its chain — blocks handed out
+    # of a chunk flagged DORMANT, which the post-STW flush DONTNEEDs (zeroing
+    # the objects just written) and the next sweep skips without clearing marks.
+    # Measured as `root N cookie broken` in 4 of 79 headered TLAB runs with
+    # `GCRY_PARALLEL_DORMANT=1` and 5 of 600 in a local stress
+    # (`bench/log/linux/2026-09-27-dormant-revive-race/`). The bitmap path pins
+    # the same transition with the cursor flag (`bitmap_revive_dormant`).
+    #
+    # With the flag still set, the sweep skips the chunk whole and the class
+    # rebuild leaves it out, so a suspension anywhere in here costs at most a
+    # chunk left off the freelist until its next sweep. The post-STW flush may
+    # DONTNEED these pages while the headers are being written (not on the
+    # TLAB path, which holds `@alloc_lock` and so keeps the walk from
+    # starting); the walk counter catches that and the revival is refused.
     private def revive_dormant_chunk(index : Int32, payload : UInt32, nursery : Bool, alloc_held : Bool) : Bool
       chunk = dormant_chunk_for_allocation(index, nursery)
       return false unless chunk
-      # A revival that lands inside the post-STW dormant pass is the shape
-      # that would let that pass madvise a chunk this thread is about to
-      # hand blocks out of. Counted here, where both facts are in hand.
-      # See `bitmap_revive_dormant`: never revive under a live chunk walk,
-      # or the flush's DONTNEED lands on blocks handed out meanwhile.
-      #
-      # Under the TLAB refill the caller already holds the lock, which orders
-      # this against the walk just the same. Taking it again here was a
-      # self-deadlock: headered + TLAB + a dormant chunk stalled every run
-      # once `GCRY_PARALLEL_DORMANT` stopped being inert on Linux.
-      refused = if alloc_held
-                  refuse_revive_during_walk(chunk)
-                else
-                  @alloc_lock.sync { refuse_revive_during_walk(chunk) }
-                end
-      return false if refused
-      mapped = chunk.value.mapped_bytes
-      @dormant_chunk_bytes -= mapped if @dormant_chunk_bytes >= mapped
+      # Read under the lock: a walk that was in flight here and ends before
+      # the install would otherwise go unseen.
+      walks = 0_u64
+      in_walk = false
+      if alloc_held
+        walks, in_walk = @live_walk_spans, @live_chunk_walk
+      else
+        @alloc_lock.sync { walks, in_walk = @live_walk_spans, @live_chunk_walk }
+      end
+      if in_walk
+        @dormant_revive_during_flush &+= 1
+        return false
+      end
 
       block_bytes = BlockHeader::SIZE.to_u64 + payload.to_u64
       cursor = ChunkHeader.data_start(chunk).as(UInt8*)
       limit = ChunkHeader.data_end(chunk).as(UInt8*)
       free_head = Pointer(Void).null
+      free_tail = Pointer(Void).null
       while (cursor + block_bytes) <= limit
         header = cursor.as(BlockHeader*)
         user = (cursor + BlockHeader::SIZE).as(Void*)
         # Touch page (recommit after DONTNEED) and link freelist.
         header.value = BlockHeader.new(payload, BlockHeader::Flags::FREE, free_head)
         free_head = user
+        free_tail = user if free_tail.null?
         cursor += block_bytes
+      end
+
+      # Under the TLAB refill the caller already holds the lock; taking it
+      # again was a self-deadlock (the spin lock is not reentrant).
+      if alloc_held
+        install_revived_chunk(chunk, index, nursery, free_head, free_tail, walks)
+      else
+        @alloc_lock.sync { install_revived_chunk(chunk, index, nursery, free_head, free_tail, walks) }
+      end
+    end
+
+    # Caller holds `@alloc_lock`, which is what sets and clears the walk flag:
+    # a walk in flight now, or one that ran since `walks` was read, may have
+    # released the pages the headers were just written to.
+    #
+    # The chain goes in front of whatever the class list holds rather than
+    # over it: a sweep that ran while the headers were written can have
+    # rebuilt that list, and overwriting it would strand its blocks.
+    private def install_revived_chunk(chunk : ChunkHeader*, index : Int32, nursery : Bool,
+                                      free_head : Void*, free_tail : Void*, walks : UInt64) : Bool
+      if @live_chunk_walk || @live_walk_spans != walks
+        @dormant_revive_during_flush &+= 1
+        return false
       end
       # Physical release excludes the page containing chunk metadata,
       # and Darwin's reusable pages need not lose their contents at all.
       # Relinking headers therefore does not make these payloads zero.
       if nursery
+        link_revived_tail(free_tail, @nursery_freelists[index])
         @nursery_freelists[index] = free_head
         @nursery_freelist_clean[index] = false
       elsif @tight_grow
@@ -2017,21 +2058,21 @@ module Gcry
         @prefer_freelists[index] = free_head
         @freelist_clean[index] = false
       else
+        link_revived_tail(free_tail, @freelists[index])
         @freelists[index] = free_head
         @freelist_clean[index] = false
       end
+      mapped = chunk.value.mapped_bytes
+      @dormant_chunk_bytes -= mapped if @dormant_chunk_bytes >= mapped
+      # Last: from here the sweep walks this chunk's blocks again.
+      ChunkHeader.set_dormant(chunk, false)
       true
     end
 
-    # Caller holds `@alloc_lock`, which is what sets and clears the walk flag.
-    private def refuse_revive_during_walk(chunk : ChunkHeader*) : Bool
-      if @live_chunk_walk
-        @dormant_revive_during_flush &+= 1
-        true
-      else
-        ChunkHeader.set_dormant(chunk, false)
-        false
-      end
+    private def link_revived_tail(tail : Void*, rest : Void*) : Nil
+      return if tail.null? || rest.null?
+      header = BlockHeader.from_user(tail)
+      header.value = BlockHeader.new(header.value.size, BlockHeader::Flags::FREE, rest)
     end
 
     # Returns {user, from_cache}. Fresh mmap pages are already zeroed.

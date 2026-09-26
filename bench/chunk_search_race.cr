@@ -163,6 +163,51 @@ class Gcry::Heap
     ChunkSearchRace.before_grow = nil
   end
 
+  # The header allocator's revival, under a sweep scheduled at the moment the
+  # chunk stops being DORMANT. Until 2026-09-27 that flag went first and the
+  # freelist was installed after it, so a sweep there found the chunk free and
+  # not dormant, made it dormant again and rebuilt the class list without it,
+  # and the revival then installed a chain into a DORMANT chunk: blocks the
+  # post-STW flush zeroes after they are handed out (`root N cookie broken`,
+  # `bench/log/linux/2026-09-27-dormant-revive-race/`). The flag is now the
+  # last thing a revival changes, so whatever that sweep decides, no block on
+  # the class list lives in a DORMANT chunk.
+  def chunk_search_header_revive_probe : Nil
+    rounded, index = SizeClasses.fit(48_u64)
+    target = map_chunk(@small_chunk_bytes, index.to_u32, 0_u32)
+    raise "failed to map header revival target" if target.null?
+    ChunkHeader.set_dormant(target, true)
+    swept = false
+    ChunkSearchRace.after_revive = ->(chunk : ChunkHeader*) {
+      if chunk == target && !swept
+        swept = true
+        @world_stopped = true
+        begin
+          sweep(true)
+        ensure
+          @world_stopped = false
+        end
+      end
+      nil
+    }
+    with_freelist_lock(index, false) do
+      raise "header revival refused" unless revive_dormant_chunk(index, rounded.to_u32, false, false)
+    end
+    raise "header revival did not reach the sweep" unless swept
+    return unless ChunkHeader.dormant?(target)
+    lo = ChunkHeader.data_start(target).address
+    hi = ChunkHeader.data_end(target).address
+    user = @freelists[index]
+    until user.null?
+      if user.address >= lo && user.address < hi
+        raise "the class freelist hands out blocks of a DORMANT chunk"
+      end
+      user = BlockHeader.from_user(user).value.next_free
+    end
+  ensure
+    ChunkSearchRace.after_revive = nil
+  end
+
   def chunk_search_stopped_probe : Nil
     @chunk_list_lock.sync do
       @world_stopped = true
@@ -236,7 +281,7 @@ if ARGV.first? == "--child"
     Gcry::SegvReport.install if ENV["GCRY_SEGV_REPORT"]? == "1"
   {% end %}
   heap = Gcry::Heap.new
-  heap.bitmap_alloc = mode != "header-dormant"
+  heap.bitmap_alloc = mode != "header-dormant" && mode != "handoff-header-dormant"
   heap.gc_threshold = UInt64::MAX
   heap.large_cache_retain = 64_u64 << 20
   # PROT_NONE prevents address reuse from hiding a stale read.
@@ -246,6 +291,15 @@ if ARGV.first? == "--child"
     heap.release_empty_chunks = true
     heap.empty_chunk_retain = 0_u64
     heap.empty_chunk_warm_retain = 0_u64
+    if mode == "handoff-header-dormant"
+      # A budget, so the sweep is free to make the chunk dormant again.
+      heap.empty_chunk_retain = 64_u64 << 20
+      heap.parallel_empty_chunk_dormant = true
+      heap.chunk_search_header_revive_probe
+      heap.destroy
+      puts "#{mode}: no freelist block in a dormant chunk after a sweep mid-revival"
+      exit 0
+    end
     heap.chunk_search_handoff_probe(mode, ARGV[2]? == "atomic")
     heap.destroy
     puts "#{mode}: cursor survived a sweep during handoff"
@@ -273,7 +327,8 @@ end
 exe = Process.executable_path.not_nil!
 failures = [] of String
 ["pool", "cached-pool", "bitmap-dormant", "header-dormant", "stopped",
- "handoff-cached", "handoff-overflow", "handoff-dormant", "handoff-fresh"].each do |mode|
+ "handoff-cached", "handoff-overflow", "handoff-dormant", "handoff-fresh",
+ "handoff-header-dormant"].each do |mode|
   result = BoundedChild.run(exe, ["--child", mode], timeout: 10.seconds)
   puts result.output
   next if result.ok
