@@ -209,7 +209,7 @@ class Gcry::Heap
       when "bitmap-dormant"
         bitmap_revive_dormant(index, false)
       when "header-dormant"
-        revive_dormant_chunk(index, payload, false)
+        revive_dormant_chunk(index, payload, false, false)
       else
         raise "unknown mode"
       end
