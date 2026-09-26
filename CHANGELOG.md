@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A headered build with TLAB and `GCRY_PARALLEL_DORMANT` hung.** The TLAB
+  refill holds the alloc lock, and reviving a dormant chunk from there took
+  that spin lock again, which spins forever. Since 0.24.1; it needs
+  `-Dgcry_block_headers`, `GCRY_BITMAP_ALLOC=0`, TLAB and a dormant chunk, and
+  on Linux the last became reachable only with the dormant fix below. The
+  stress campaign run with the opt-in on caught it at once: 26 of 26 runs of
+  the headered TLAB lanes hung, and 100 iterations of `stw_mt_property_test`
+  hang 3 of 3 seeds. The revival now takes the lock only when its caller does
+  not hold it, and both CI TLAB steps run a dormant arm under a timeout.
+
 - **`GCRY_PARALLEL_DORMANT=1` works again.** It is the documented RSS opt-in
   for multi-mutator programs, and it releases empty chunks within
   `empty_chunk_retain`. On 2026-08-03 (0.18.0) the Linux process default

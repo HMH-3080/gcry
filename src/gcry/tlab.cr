@@ -278,11 +278,11 @@ module Gcry
         2.times do |attempt|
           if nursery
             if @nursery_freelists[class_index].null?
-              refill_size_class(class_index, payload, nursery: true)
+              refill_size_class(class_index, payload, nursery: true, alloc_held: true)
             end
           else
             if @freelists[class_index].null?
-              refill_size_class(class_index, payload, nursery: false)
+              refill_size_class(class_index, payload, nursery: false, alloc_held: true)
             end
           end
 
@@ -307,7 +307,7 @@ module Gcry
           end
 
           if src.null? && attempt == 0
-            refill_size_class(class_index, payload, nursery: nursery)
+            refill_size_class(class_index, payload, nursery: nursery, alloc_held: true)
             next
           end
 

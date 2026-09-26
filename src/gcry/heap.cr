@@ -1907,8 +1907,12 @@ module Gcry
       @prefer_freelists[index] = Pointer(Void).null
     end
 
-    private def refill_size_class(index : Int32, payload : UInt32, nursery : Bool = false) : Nil
-      if revive_dormant_chunk(index, payload, nursery)
+    # `alloc_held`: the caller already holds `@alloc_lock` (the TLAB refill
+    # does), so the dormant revival must not take it again. The lock is a
+    # spin lock and not reentrant; taking it twice spins forever.
+    private def refill_size_class(index : Int32, payload : UInt32, nursery : Bool = false,
+                                  alloc_held : Bool = false) : Nil
+      if revive_dormant_chunk(index, payload, nursery, alloc_held)
         return
       end
 
@@ -1966,7 +1970,7 @@ module Gcry
     end
 
     # Fault a dormant empty chunk back in and install its freelist.
-    private def revive_dormant_chunk(index : Int32, payload : UInt32, nursery : Bool) : Bool
+    private def revive_dormant_chunk(index : Int32, payload : UInt32, nursery : Bool, alloc_held : Bool) : Bool
       chunk = dormant_chunk_for_allocation(index, nursery)
       return false unless chunk
       # A revival that lands inside the post-STW dormant pass is the shape
@@ -1974,15 +1978,16 @@ module Gcry
       # hand blocks out of. Counted here, where both facts are in hand.
       # See `bitmap_revive_dormant`: never revive under a live chunk walk,
       # or the flush's DONTNEED lands on blocks handed out meanwhile.
-      refused = false
-      with_alloc_lock do
-        if @live_chunk_walk
-          @dormant_revive_during_flush &+= 1
-          refused = true
-        else
-          ChunkHeader.set_dormant(chunk, false)
-        end
-      end
+      #
+      # Under the TLAB refill the caller already holds the lock, which orders
+      # this against the walk just the same. Taking it again here was a
+      # self-deadlock: headered + TLAB + a dormant chunk stalled every run
+      # once `GCRY_PARALLEL_DORMANT` stopped being inert on Linux.
+      refused = if alloc_held
+                  refuse_revive_during_walk(chunk)
+                else
+                  @alloc_lock.sync { refuse_revive_during_walk(chunk) }
+                end
       return false if refused
       mapped = chunk.value.mapped_bytes
       @dormant_chunk_bytes -= mapped if @dormant_chunk_bytes >= mapped
@@ -2016,6 +2021,17 @@ module Gcry
         @freelist_clean[index] = false
       end
       true
+    end
+
+    # Caller holds `@alloc_lock`, which is what sets and clears the walk flag.
+    private def refuse_revive_during_walk(chunk : ChunkHeader*) : Bool
+      if @live_chunk_walk
+        @dormant_revive_during_flush &+= 1
+        true
+      else
+        ChunkHeader.set_dormant(chunk, false)
+        false
+      end
     end
 
     # Returns {user, from_cache}. Fresh mmap pages are already zeroed.

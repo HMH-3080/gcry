@@ -381,6 +381,13 @@ jobs:
           ./bin/stw_mt_property_test --tlab --disabled
           crystal build -Dgc_none -Dgcry_block_headers bench/stw_mt_property_test.cr -o bin/stw_mt_property_test_hdr
           GCRY_BITMAP_ALLOC=0 ./bin/stw_mt_property_test_hdr --tlab --seed=1 --iterations=50 --workers=2,4
+          # With the dormant opt-in the TLAB refill revives dormant chunks
+          # while it holds the alloc lock; before 2026-09-26 the revival took
+          # that spin lock again and every run of this arm hung (0.24.1 on,
+          # reachable on Linux once the opt-in stopped being inert). 100
+          # iterations hang 3 of 3 seeds on the old code; the timeout turns a
+          # hang into a red step.
+          GCRY_BITMAP_ALLOC=0 GCRY_PARALLEL_DORMANT=1 timeout 300 ./bin/stw_mt_property_test_hdr --tlab --seed=1 --iterations=100 --workers=2,4
 
       - name: Process-GC STW MT property test with TLAB+nursery (50 iterations, 2+4 workers)
         env:
@@ -403,6 +410,8 @@ jobs:
           ./bin/stw_mt_property_test --tlab --nursery --disabled
           crystal build -Dgc_none -Dgcry_block_headers bench/stw_mt_property_test.cr -o bin/stw_mt_property_test_hdr
           GCRY_BITMAP_ALLOC=0 ./bin/stw_mt_property_test_hdr --tlab --nursery --seed=1 --iterations=50 --workers=2,4
+          # The dormant arm, as in the step above.
+          GCRY_BITMAP_ALLOC=0 GCRY_PARALLEL_DORMANT=1 timeout 300 ./bin/stw_mt_property_test_hdr --tlab --nursery --seed=1 --iterations=100 --workers=2,4
 
       - name: Process-GC nursery+TLAB minor smoke (single-thread)
         run: |
