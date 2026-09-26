@@ -13,8 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   for multi-mutator programs, and it releases empty chunks within
   `empty_chunk_retain`. On 2026-08-03 (0.18.0) the Linux process default
   for that budget became 0, and from then the opt-in, `_ALL` too, did nothing: Kemal
-  EC4 post-GC RSS 83.4 MB with it against 83.7 without. Either knob now
-  brings a 64 MiB budget unless `GCRY_EMPTY_CHUNK_RETAIN` is set: EC4
+  EC4 post-GC RSS 83.4 MB with it against 83.7 without. On Linux either knob
+  now brings a 64 MiB budget unless `GCRY_EMPTY_CHUNK_RETAIN` is set (paired
+  on the CI runner, 10 rounds: throughput 1.02×, pause 1.01×, RSS 0.25× at
+  EC4; macOS keeps its 512 KiB default, see the page-release item): EC4
   83.8 → **19.7 MB**, and an EC1 program with one extra thread 25.1 →
   15.6 MB. Nothing ran either knob before; `make parallel-dormant` does now,
   on Linux and macOS, with `GCRY_EMPTY_CHUNK_RETAIN=0` as its red arm
