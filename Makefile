@@ -1013,6 +1013,10 @@ chunk-search-race: $(BIN)
 # A library build installs no SIGSEGV handler of its own, so a fault here used
 # to print one line with no address. The children inherit this.
 	GCRY_SEGV_REPORT=1 $(BIN)/chunk_search_race
+	# The header allocator's arms again, on the layout they are about: with
+	# `-Dgcry_block_headers` the freelist is real and TLAB can be enabled.
+	$(CRYSTAL) build -Dgcry_block_headers bench/chunk_search_race.cr -o $(BIN)/chunk_search_race_hdr --error-trace
+	GCRY_SEGV_REPORT=1 $(BIN)/chunk_search_race_hdr --modes header-dormant,handoff-header-dormant,handoff-tlab-refill
 
 # A mutator inside `find_block` while collections run.
 #

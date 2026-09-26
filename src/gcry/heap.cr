@@ -225,6 +225,12 @@ module Gcry
     @post_stw_mutex = uninitialized Gcry::OS::PthreadMutexT
     @tlab_enabled = false
     @tlab_refills = 0_u64
+    # Refills that a collection stopped part-way and that were thrown away.
+    @tlab_refill_discards = 0_u64
+    # Classes whose list a discarded refill dropped; the next sweep rebuilds
+    # them from the chunks.
+    @freelist_rebuild_request = 0_u64
+    @freelist_rebuild_request_nursery = 0_u64
     @tlab_steals = 0_u64
     @tlab_hits = Atomic(UInt64).new(0_u64)
     @tlabs_booted = false

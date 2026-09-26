@@ -8,6 +8,7 @@ module ChunkSearchRace
   class_property after_take : Proc(Gcry::ChunkHeader*, Nil)?
   class_property after_revive : Proc(Gcry::ChunkHeader*, Nil)?
   class_property before_grow : Proc(Nil)?
+  class_property before_tlab : Proc(Nil)?
   @@target = Atomic(UInt64).new(0_u64)
   @@stage = Atomic(Int32).new(0)
 
@@ -67,6 +68,13 @@ class Gcry::Heap
   private def bitmap_pool_grow(pool : BitmapPoolIndex*, needed : Int32) : Bool
     ChunkSearchRace.before_grow.try(&.call) if needed > 1
     previous_def
+  end
+
+  # Between a TLAB refill taking its batch off the class list and installing
+  # it: the refill looks its TLAB up in exactly that gap.
+  protected def current_tlab_under_lock(key : UInt64 = current_thread_key) : Tlab*
+    ChunkSearchRace.before_tlab.try(&.call)
+    previous_def(key)
   end
 
   # Schedule the in-STW sweep while the allocating thread still holds its
@@ -176,6 +184,17 @@ class Gcry::Heap
     rounded, index = SizeClasses.fit(48_u64)
     target = map_chunk(@small_chunk_bytes, index.to_u32, 0_u32)
     raise "failed to map header revival target" if target.null?
+    # The pages still hold the FREE headers the sweep left: the post-STW flush
+    # has not released them yet, or (Darwin) `MADV_FREE` kept them. Zeroed
+    # headers would read as a refill in progress, which the sweep never
+    # reclaims, and hide the window.
+    block_bytes = BlockHeader::SIZE.to_u64 + rounded
+    cursor = ChunkHeader.data_start(target).as(UInt8*)
+    limit = ChunkHeader.data_end(target).as(UInt8*)
+    while (cursor + block_bytes) <= limit
+      cursor.as(BlockHeader*).value = BlockHeader.new(rounded.to_u32, BlockHeader::Flags::FREE, Pointer(Void).null)
+      cursor += block_bytes
+    end
     ChunkHeader.set_dormant(target, true)
     swept = false
     ChunkSearchRace.after_revive = ->(chunk : ChunkHeader*) {
@@ -206,6 +225,55 @@ class Gcry::Heap
     end
   ensure
     ChunkSearchRace.after_revive = nil
+  end
+
+  # A TLAB refill stopped by a collection between taking its batch off the
+  # class list and installing it. The stopped world takes no allocator lock,
+  # so nothing keeps a collection out of that gap. The batch is on no list and
+  # in no TLAB there, so the sweep sees its blocks as free: here it makes their
+  # chunk dormant and rebuilds the class list without them. Until 2026-09-27
+  # the refill then installed the batch anyway, and the first allocations wrote
+  # into a chunk the post-STW flush zeroes (`root N cookie broken`,
+  # `bench/log/linux/2026-09-27-dormant-revive-race/`). The refill now sees
+  # the TLAB epoch move and starts over.
+  def chunk_search_tlab_refill_probe : Nil
+    rounded, index = SizeClasses.fit(48_u64)
+    payload = rounded.to_u32
+    self.tlab_enabled = true
+    raise "TLAB refused on the header allocator" unless tlab_enabled?
+    tlab = current_tlab # registers this thread before the hook is armed
+    refill_size_class(index, payload)
+    fired = false
+    ChunkSearchRace.before_tlab = -> {
+      unless fired
+        fired = true
+        @world_stopped = true
+        begin
+          flush_all_tlabs
+          sweep(true)
+        ensure
+          @world_stopped = false
+        end
+      end
+      nil
+    }
+    head = tlab_refill_once(index, payload, false)
+    raise "TLAB refill returned nothing" if head.null?
+    raise "TLAB refill did not reach the collection" unless fired
+    user = tlab.value.freelists[index]
+    until user.null?
+      if (chunk = chunk_containing_unlocked(user.address)) && ChunkHeader.dormant?(chunk)
+        raise "the TLAB hands out blocks of a DORMANT chunk"
+      end
+      g = @freelists[index]
+      until g.null?
+        raise "a TLAB block is also on the class freelist" if g == user
+        g = BlockHeader.from_user(g).value.next_free
+      end
+      user = BlockHeader.from_user(user).value.next_free
+    end
+  ensure
+    ChunkSearchRace.before_tlab = nil
   end
 
   def chunk_search_stopped_probe : Nil
@@ -281,7 +349,8 @@ if ARGV.first? == "--child"
     Gcry::SegvReport.install if ENV["GCRY_SEGV_REPORT"]? == "1"
   {% end %}
   heap = Gcry::Heap.new
-  heap.bitmap_alloc = mode != "header-dormant" && mode != "handoff-header-dormant"
+  header_mode = {"header-dormant", "handoff-header-dormant", "handoff-tlab-refill"}.includes?(mode)
+  heap.bitmap_alloc = !header_mode
   heap.gc_threshold = UInt64::MAX
   heap.large_cache_retain = 64_u64 << 20
   # PROT_NONE prevents address reuse from hiding a stale read.
@@ -291,13 +360,19 @@ if ARGV.first? == "--child"
     heap.release_empty_chunks = true
     heap.empty_chunk_retain = 0_u64
     heap.empty_chunk_warm_retain = 0_u64
-    if mode == "handoff-header-dormant"
-      # A budget, so the sweep is free to make the chunk dormant again.
+    if mode == "handoff-header-dormant" || mode == "handoff-tlab-refill"
+      # A budget, so the sweep is free to make the chunk dormant.
       heap.empty_chunk_retain = 64_u64 << 20
       heap.parallel_empty_chunk_dormant = true
-      heap.chunk_search_header_revive_probe
-      heap.destroy
-      puts "#{mode}: no freelist block in a dormant chunk after a sweep mid-revival"
+      if mode == "handoff-tlab-refill"
+        heap.chunk_search_tlab_refill_probe
+        heap.destroy
+        puts "#{mode}: no TLAB block in a dormant chunk or on the class list after a collection mid-refill"
+      else
+        heap.chunk_search_header_revive_probe
+        heap.destroy
+        puts "#{mode}: no freelist block in a dormant chunk after a sweep mid-revival"
+      end
       exit 0
     end
     heap.chunk_search_handoff_probe(mode, ARGV[2]? == "atomic")
@@ -326,9 +401,18 @@ end
 
 exe = Process.executable_path.not_nil!
 failures = [] of String
-["pool", "cached-pool", "bitmap-dormant", "header-dormant", "stopped",
- "handoff-cached", "handoff-overflow", "handoff-dormant", "handoff-fresh",
- "handoff-header-dormant"].each do |mode|
+modes = ["pool", "cached-pool", "bitmap-dormant", "header-dormant", "stopped",
+         "handoff-cached", "handoff-overflow", "handoff-dormant", "handoff-fresh",
+         "handoff-header-dormant"]
+# TLAB is a freelist mechanism: a headerless build refuses it, so the refill
+# arm needs `-Dgcry_block_headers` (`make chunk-search-race` builds both).
+{% if flag?(:gcry_block_headers) %}
+  modes << "handoff-tlab-refill"
+{% end %}
+if i = ARGV.index("--modes")
+  modes = ARGV[i + 1].split(',')
+end
+modes.each do |mode|
   result = BoundedChild.run(exe, ["--child", mode], timeout: 10.seconds)
   puts result.output
   next if result.ok

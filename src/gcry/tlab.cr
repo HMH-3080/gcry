@@ -74,6 +74,8 @@ module Gcry
       @tlab_refills
     end
 
+    getter tlab_refill_discards : UInt64
+
     def tlab_steals : UInt64
       @tlab_steals
     end
@@ -271,120 +273,179 @@ module Gcry
     # hit path does find_block→@index_lock; concurrent per-class refill×mmap
     # amplified index contention and crushed Kemal TLAB-on thr (~26k→~15k).
     # TLAB-off alloc/free still use with_freelist_lock.
+    #
+    # A collection can stop this thread anywhere in here, `@alloc_lock` or not:
+    # the stopped world takes no allocator lock. Everything the refill read
+    # before that is stale after it. The flush put every TLAB back on the class
+    # lists, and the sweep may have rebuilt those lists and made chunks dormant
+    # — including the chunk of a batch this thread had already taken off the
+    # list and not yet installed, which no list or TLAB held, so to the sweep
+    # its blocks were simply free. Installing it then handed out blocks the
+    # post-STW flush zeroes as soon as this thread lets go of the lock it is
+    # waiting on (`root N cookie broken`, headered TLAB with
+    # `GCRY_PARALLEL_DORMANT=1`; `bench/log/linux/2026-09-27-dormant-revive-race/`).
+    #
+    # So the refill runs against the TLAB epoch, which every collection bumps
+    # inside the stop. If it moved, the batch goes back out of the TLAB, the
+    # class list this refill may have overwritten with a stale chain is dropped
+    # and marked for the next sweep to rebuild, and the refill starts over.
+    # All of that happens before the lock is released, so the post-STW flush
+    # cannot run in between; a collection after the check finds the batch in
+    # the TLAB and flushes it like any other.
     private def tlab_refill_once(class_index : Int32, payload : UInt32, nursery : Bool) : Void*
       head = Pointer(Void).null
       batch = (8192_u64 / payload.to_u64).to_i32.clamp(1, 256)
       @alloc_lock.sync do
-        2.times do |attempt|
+        4.times do
+          epoch = @tlab_epoch.get
+          head = tlab_refill_locked(class_index, payload, nursery, batch)
+          break if @tlab_epoch.get == epoch
+          discard_refill_across_collection(class_index, nursery)
+          head = Pointer(Void).null
+        end
+      end
+      head
+    end
+
+    # Caller holds `@alloc_lock` and saw the TLAB epoch move under it.
+    private def discard_refill_across_collection(class_index : Int32, nursery : Bool) : Nil
+      @tlab_refill_discards &+= 1
+      tlab = current_tlab_under_lock
+      unless tlab.null?
+        slot = tlab_slot_index(tlab)
+        lock_tlab_slot(slot)
+        begin
           if nursery
-            if @nursery_freelists[class_index].null?
-              refill_size_class(class_index, payload, nursery: true, alloc_held: true)
-            end
+            tlab.value.nursery_freelists[class_index] = Pointer(Void).null
           else
-            if @freelists[class_index].null?
-              refill_size_class(class_index, payload, nursery: false, alloc_held: true)
-            end
+            tlab.value.freelists[class_index] = Pointer(Void).null
           end
+        ensure
+          unlock_tlab_slot(slot)
+        end
+      end
+      bit = 1_u64 << class_index
+      if nursery
+        @nursery_freelists[class_index] = Pointer(Void).null
+        @freelist_rebuild_request_nursery |= bit
+      else
+        @freelists[class_index] = Pointer(Void).null
+        @prefer_freelists[class_index] = Pointer(Void).null
+        @freelist_rebuild_request |= bit
+      end
+    end
 
-          src = nursery ? @nursery_freelists[class_index] : @freelists[class_index]
-          skip_budget = 4096
-          while !src.null? && !BlockHeader.free?(BlockHeader.from_user(src)) && skip_budget > 0
-            src = BlockHeader.from_user(src).value.next_free
-            if nursery
-              @nursery_freelists[class_index] = src
-            else
-              @freelists[class_index] = src
-            end
-            skip_budget -= 1
+    private def tlab_refill_locked(class_index : Int32, payload : UInt32, nursery : Bool, batch : Int32) : Void*
+      head = Pointer(Void).null
+      2.times do |attempt|
+        if nursery
+          if @nursery_freelists[class_index].null?
+            refill_size_class(class_index, payload, nursery: true, alloc_held: true)
           end
-          if skip_budget == 0
-            if nursery
-              @nursery_freelists[class_index] = Pointer(Void).null
-            else
-              @freelists[class_index] = Pointer(Void).null
-            end
-            src = Pointer(Void).null
+        else
+          if @freelists[class_index].null?
+            refill_size_class(class_index, payload, nursery: false, alloc_held: true)
           end
+        end
 
-          if src.null? && attempt == 0
-            refill_size_class(class_index, payload, nursery: nursery, alloc_held: true)
-            next
-          end
-
-          # Global still empty: do not steal from other live TLABs (TOCTOU).
-          break if src.null?
-
-          if @blacklist_enabled
-            taken = take_non_blacklisted(src, class_index, nursery)
-            unless taken.null?
-              th = BlockHeader.from_user(taken)
-              tv = th.value
-              tv.next_free = nursery ? @nursery_freelists[class_index] : @freelists[class_index]
-              th.value = tv
-              if nursery
-                @nursery_freelists[class_index] = taken
-              else
-                @freelists[class_index] = taken
-              end
-              src = taken
-            end
-          end
-
-          break if src.null? || !BlockHeader.free?(BlockHeader.from_user(src))
-
-          head = src
-          tail = src
-          count = 1
-          while count < batch
-            h = BlockHeader.from_user(tail)
-            nxt = h.value.next_free
-            break if nxt.null?
-            break unless BlockHeader.free?(BlockHeader.from_user(nxt))
-            tail = nxt
-            count += 1
-          end
-          last = BlockHeader.from_user(tail)
-          rest = last.value.next_free
-          while !rest.null? && !BlockHeader.free?(BlockHeader.from_user(rest))
-            rest = BlockHeader.from_user(rest).value.next_free
-          end
-          lv = last.value
-          lv.next_free = Pointer(Void).null
-          last.value = lv
+        src = nursery ? @nursery_freelists[class_index] : @freelists[class_index]
+        skip_budget = 4096
+        while !src.null? && !BlockHeader.free?(BlockHeader.from_user(src)) && skip_budget > 0
+          src = BlockHeader.from_user(src).value.next_free
           if nursery
-            @nursery_freelists[class_index] = rest
+            @nursery_freelists[class_index] = src
           else
-            @freelists[class_index] = rest
+            @freelists[class_index] = src
           end
+          skip_budget -= 1
+        end
+        if skip_budget == 0
+          if nursery
+            @nursery_freelists[class_index] = Pointer(Void).null
+          else
+            @freelists[class_index] = Pointer(Void).null
+          end
+          src = Pointer(Void).null
+        end
 
-          tlab = current_tlab_under_lock
-          if tlab.null?
-            lv2 = last.value
-            lv2.next_free = nursery ? @nursery_freelists[class_index] : @freelists[class_index]
-            last.value = lv2
-            if nursery
-              @nursery_freelists[class_index] = head
-            else
-              @freelists[class_index] = head
-            end
-            head = Pointer(Void).null
-            break
-          end
+        if src.null? && attempt == 0
+          refill_size_class(class_index, payload, nursery: nursery, alloc_held: true)
+          next
+        end
 
-          slot = tlab_slot_index(tlab)
-          lock_tlab_slot(slot)
-          begin
+        # Global still empty: do not steal from other live TLABs (TOCTOU).
+        break if src.null?
+
+        if @blacklist_enabled
+          taken = take_non_blacklisted(src, class_index, nursery)
+          unless taken.null?
+            th = BlockHeader.from_user(taken)
+            tv = th.value
+            tv.next_free = nursery ? @nursery_freelists[class_index] : @freelists[class_index]
+            th.value = tv
             if nursery
-              tlab.value.nursery_freelists[class_index] = head
+              @nursery_freelists[class_index] = taken
             else
-              tlab.value.freelists[class_index] = head
+              @freelists[class_index] = taken
             end
-          ensure
-            unlock_tlab_slot(slot)
+            src = taken
           end
-          @tlab_refills += 1
+        end
+
+        break if src.null? || !BlockHeader.free?(BlockHeader.from_user(src))
+
+        head = src
+        tail = src
+        count = 1
+        while count < batch
+          h = BlockHeader.from_user(tail)
+          nxt = h.value.next_free
+          break if nxt.null?
+          break unless BlockHeader.free?(BlockHeader.from_user(nxt))
+          tail = nxt
+          count += 1
+        end
+        last = BlockHeader.from_user(tail)
+        rest = last.value.next_free
+        while !rest.null? && !BlockHeader.free?(BlockHeader.from_user(rest))
+          rest = BlockHeader.from_user(rest).value.next_free
+        end
+        lv = last.value
+        lv.next_free = Pointer(Void).null
+        last.value = lv
+        if nursery
+          @nursery_freelists[class_index] = rest
+        else
+          @freelists[class_index] = rest
+        end
+
+        tlab = current_tlab_under_lock
+        if tlab.null?
+          lv2 = last.value
+          lv2.next_free = nursery ? @nursery_freelists[class_index] : @freelists[class_index]
+          last.value = lv2
+          if nursery
+            @nursery_freelists[class_index] = head
+          else
+            @freelists[class_index] = head
+          end
+          head = Pointer(Void).null
           break
         end
+
+        slot = tlab_slot_index(tlab)
+        lock_tlab_slot(slot)
+        begin
+          if nursery
+            tlab.value.nursery_freelists[class_index] = head
+          else
+            tlab.value.freelists[class_index] = head
+          end
+        ensure
+          unlock_tlab_slot(slot)
+        end
+        @tlab_refills += 1
+        break
       end
       head
     end

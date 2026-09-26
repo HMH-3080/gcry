@@ -20,6 +20,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   locally once the hang below was fixed. The flag is now the last thing a
   revival changes. `make chunk-search-race` schedules a sweep at that moment
   (`handoff-header-dormant`), and on the old code it fails every run.
+- **A TLAB refill stopped by a collection could install a batch the collector
+  had already reclaimed.** The refill takes a batch off the class list under
+  the alloc lock and then installs it in the thread's TLAB. The stopped world
+  takes no allocator lock. A collection in that gap saw blocks on no list and
+  in no TLAB, so it could make their chunk dormant or rebuild the class list
+  around them. The refill then installed the batch anyway, and wrote a stale
+  chain over the rebuilt list. A probe caught the gap in 26 of 600
+  headered-TLAB runs. The refill now checks the TLAB epoch, which every
+  collection bumps, before it lets go of the lock. If the epoch moved, it takes
+  the batch back, drops the class list for the next sweep to rebuild, and
+  starts over. `make chunk-search-race` now also builds with
+  `-Dgcry_block_headers` and runs a collection in that gap
+  (`handoff-tlab-refill`), which fails on the old code every run.
 
 - **A headered build with TLAB and `GCRY_PARALLEL_DORMANT` hung.** The TLAB
   refill holds the alloc lock, and reviving a dormant chunk from there took

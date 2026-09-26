@@ -16,8 +16,14 @@ module Gcry
       to_unmap = Pointer(ChunkHeader).null
       any_drop = false
       # Opt-in empty-chunk release: defer freelist rebuilds per size-class.
-      rebuild_mask = 0_u64
-      rebuild_nursery_mask = 0_u64
+      # A TLAB refill a collection interrupted dropped these classes' lists
+      # (`discard_refill_across_collection`); rebuild them from the chunks.
+      # Sweep runs in the stopped world or under the class locks, and no
+      # refill can be in flight across it: the one that set a bit is past it.
+      rebuild_mask = @freelist_rebuild_request
+      rebuild_nursery_mask = @freelist_rebuild_request_nursery
+      @freelist_rebuild_request = 0_u64
+      @freelist_rebuild_request_nursery = 0_u64
 
       if major
         @size_class_chunk_count = 0_u64

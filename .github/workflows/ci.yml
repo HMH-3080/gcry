@@ -1745,7 +1745,9 @@ jobs:
           # only an address, so it cannot distinguish a released large chunk
           # from an unrelated crash.
           t env GCRY_SEGV_REPORT=1 timeout 600 make large-cache-race
-          t timeout 60 make chunk-search-race
+          # Two builds since 2026-09-27 (the header allocator's arms need
+          # `-Dgcry_block_headers`), so the bound covers both compiles.
+          t timeout 300 make chunk-search-race
 
   # Sampling, not gating. The `Thread` use-after-free fires in roughly one
   # aarch64 job in three and has never been seen off CI — 40 runs of the same
