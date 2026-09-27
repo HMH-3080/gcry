@@ -3641,6 +3641,17 @@ draw of `bench/log/macos/2026-08-10-053800/` — which is what makes it schedula
 - [ ] **Attribute the residual per-rep spread** — open below. Until it closes it
       bounds every perf claim either release makes: ±2–3pp on phase timings, ±1pp
       on post-GC RSS, at 12 reps.
+- [ ] **Retire the marker's TLAB "on-stack freelist" claim.** `claim_free_tlab_block`
+      clears FREE on any block a stack root points into and marks its
+      `next_free` chain. It assumed a mutator could be stopped holding FREE
+      nodes out of its TLAB. Until 2026-09-27 that was true, because TLAB slots
+      were never claimed or flushed. Now the collector waits out every slot's
+      critical section before it stops the world (`lock_tlab_slots_for_stop`),
+      and no mutator can be stopped holding such a node. So the claim only
+      turns stale FREE pointers on stacks into retained USED blocks and marked
+      chains. TLAB-only, and TLAB is unsupported. Removing it wants an A/B of
+      retention and a stress round, not a guess.
+      `bench/log/linux/2026-09-27-dormant-revive-race/FINDINGS.md`
 
 ## After that — lift the ceiling
 
