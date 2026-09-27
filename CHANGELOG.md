@@ -27,6 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   On Linux either knob now brings a 64 MiB budget unless
   `GCRY_EMPTY_CHUNK_RETAIN` is set. Paired on the CI runner over 10 rounds at
   EC4, it cost nothing measurable: throughput 1.02×, pause 1.01×, RSS 0.25×.
+  At `wrk -c100` it does cost throughput. A paired local run measured 0.914×
+  over 16 rounds (added after the release), and that is why it stays opt-in.
   - EC4: 83.8 → **19.7 MB**.
   - An EC1 program with one extra thread: 25.1 → 15.6 MB.
 

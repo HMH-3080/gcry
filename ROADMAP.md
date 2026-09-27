@@ -3621,8 +3621,9 @@ draw of `bench/log/macos/2026-08-10-053800/` — which is what makes it schedula
       The RSS half has a remedy now: `GCRY_PARALLEL_DORMANT=1` gives it back
       (25.1 → 15.6 MB). That opt-in had been inert on Linux since
       2026-08-03; it is fixed and gated
-      (`bench/log/linux/2026-09-26-parallel-dormant-inert/`). Whether it
-      should be on by default past the boundary is open.
+      (`bench/log/linux/2026-09-26-parallel-dormant-inert/`). Measured for a
+      default, and it stays opt-in. At `wrk -c100` EC4 it costs about 9% of
+      throughput, paired (0.914×, 16 rounds); the lighter CI matrix read 1.02×.
       Forcing the EC1 sweep regardless of the count **hangs** (main and
       `gc-idle` spinning), so the gate is load-bearing. The likely shape is
       counting only threads that allocate, which needs a design that covers a
