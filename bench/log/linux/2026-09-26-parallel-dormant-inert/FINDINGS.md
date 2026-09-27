@@ -113,3 +113,20 @@ about a third off the RSS under load. The CI matrix (1.02×) ran a lighter
 load and did not see it. This matches the old note beside the flag, "thr
 ~25%", in direction if not size. It stays opt-in, as documented: an RSS
 lever for programs that want it.
+
+## macOS: `MADV_FREE_REUSABLE` (2026-09-27, `d180b88`)
+
+Dormant chunks and the large cache now release with `MADV_FREE_REUSABLE`, and
+both revivals and the large-cache hand-out call `MADV_FREE_REUSE` first.
+`make parallel-dormant` on the macOS runner (run `36325589830`), 64 MiB
+budget:
+
+| release | dormant | footprint peak → after `GC.collect` | `ps` RSS after |
+|---|---:|---:|---:|
+| `MADV_FREE_REUSABLE` | 43 MB | 60 → **11 MB** | 53 MB |
+| `MADV_FREE` (`GCRY_DARWIN_REUSABLE=0`) | 44 MB | 61 → 51 MB | 53 MB |
+
+`ps` RSS counts reusable pages until the kernel takes them, so on macOS the
+footprint is the number to read. The gate asserts both arms: at least half
+the dormant bytes leave the footprint with the default release, and fewer
+than half with `MADV_FREE`.

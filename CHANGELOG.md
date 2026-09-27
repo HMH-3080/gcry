@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **macOS: released pages now leave the footprint.** Every release on
+  Darwin was `MADV_FREE`, although the code and docs said
+  `MADV_FREE_REUSABLE`. `MADV_FREE` pages stay in `phys_footprint`, the
+  number Activity Monitor and the memory-pressure killer go by, until the
+  system runs short. Dormant chunks and cached large chunks now release with
+  `MADV_FREE_REUSABLE`, and every place that uses them again (both
+  revivals, the large-cache hand-out) calls `MADV_FREE_REUSE` first.
+  `make parallel-dormant` on the macOS runner, 44 MB made dormant: footprint
+  after `GC.collect` **51 → 11 MB**. `ps` RSS does not move (53 MB) because
+  it counts reusable pages until the kernel takes them.
+  `GCRY_DARWIN_REUSABLE=0` restores `MADV_FREE`, and the gate asserts that
+  the footprint stays there with it. The opt-in free-page walk
+  (`GCRY_PAGE_DONTNEED=1`) stays on `MADV_FREE`, because its pages are reused
+  by any allocation that lands in them.
+
 ## [0.28.2] - 2026-09-27
 
 ### Added

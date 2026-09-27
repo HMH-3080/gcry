@@ -3592,7 +3592,11 @@ draw of `bench/log/macos/2026-08-10-053800/` — which is what makes it schedula
       ~1 on Linux, whose zero page absorbs the reads. Gated on Darwin, with the
       skip-off floor as its red arm.
       `bench/log/macos/2026-09-25-205449-root-phase/FINDINGS.md`
-- [ ] **macOS page release is `MADV_FREE`, not `MADV_FREE_REUSABLE`.** Every
+- [x] **macOS page release is `MADV_FREE`, not `MADV_FREE_REUSABLE` — fixed
+      2026-09-27 for dormant chunks and the large cache: footprint after
+      `GC.collect` 51 → 11 MB with 44 MB dormant (`make parallel-dormant`,
+      which now asserts it, red arm `GCRY_DARWIN_REUSABLE=0`). The free-page
+      walk stays `MADV_FREE`.** Every
       Darwin release path (dormant chunks, the all-chunk free-page walk, the
       large freelist) goes through `Platform.release_physical_pages`, which
       passes advice 5, `MADV_FREE`. The tree's comments and docs say
