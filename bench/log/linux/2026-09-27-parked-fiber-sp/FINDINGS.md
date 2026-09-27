@@ -84,4 +84,8 @@ Local gates, all green: `stw-mt-property-test-short`, `nested-spawn-uaf`,
 `scheduler-roots`, `stw-lag-pause`, `thread-churn-uaf`, `greg-roots`,
 `idle-thread-roots`, `stw-slot-precision`.
 
-Stress campaign on the change (default configuration, 5 lanes, 2 h): PENDING.
+Stress campaign on the change: the campaign lanes in the default
+configuration, built from `db50034`, 5 lanes, 2 h (`campaign-summary.md`).
+It ran **1674 runs over 10.1 lane-hours: 0 failures, 0 timeouts**. That
+includes 458 `stw_mt` runs (Parallel workers at 2, 4 and 8, diagnostics on
+in two thirds of them), 152 `thread_storm` and 152 `pattern_fuzz+diag`.
