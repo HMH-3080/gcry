@@ -9,6 +9,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`GCRY_TLAB=1` never gave a thread its own buffer, and no collection ever
+  emptied one.** This affects TLAB only, which is unsupported and needs a
+  headered build. From TLAB's first commit (2026-07-24), claiming a slot and
+  flushing it both wrote through `@tlabs[i].field`. `StaticArray#[]` returns
+  the struct by value, so both writes went to a copy and were lost:
+  - Every thread shared slot 0, and every allocation's slot lookup took the
+    allocator lock.
+  - No TLAB chain was ever handed back at a stop. The sweep read those blocks
+    as free while the TLAB kept handing them out, relinked them onto the class
+    list, and, with dormant chunks, released their pages under live objects:
+    `root N cookie broken` in 5% of loaded `stw_mt_property_test_hdr --tlab`
+    runs with `GCRY_PARALLEL_DORMANT=1`.
+
+  The writes now go through a pointer. A thread past `MAX_TLABS` shares a slot
+  by key rather than failing. Two things this made reachable are also fixed:
+  - The collector now takes every slot lock before it stops the world, so no
+    thread is stopped halfway through a TLAB allocation (`GCRY_TLAB_QUIESCE=0`
+    restores the old order for A/B).
+  - The collector's own allocations inside a stopped world skip its TLAB. A
+    refill there put blocks in the TLAB that the sweep then put back on the
+    class list, and the next flush closed the list into a cycle.
+
+  `make chunk-search-race` gained `tlab-slots` (per-thread slots, emptied by
+  a flush), which fails on the old code every run.
+
 - **Reviving a dormant chunk could hand out blocks the collector was about to
   zero.** The header allocator's revival cleared the chunk's DORMANT flag
   first and installed its freelist after. A thread suspended in between left

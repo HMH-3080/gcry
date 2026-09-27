@@ -715,12 +715,18 @@ module Gcry
       MonitorGate.close unless @monitor_gate_late_close
       @roots_lock.lock
       @finalizers.lock_for_stw
+      slots_locked = false
       begin
-        {% if flag?(:win32) %}
-          stop_world(raise_on_error: false)
-        {% else %}
-          stop_world
-        {% end %}
+        slots_locked = lock_tlab_slots_for_stop
+        begin
+          {% if flag?(:win32) %}
+            stop_world(raise_on_error: false)
+          {% else %}
+            stop_world
+          {% end %}
+        ensure
+          unlock_tlab_slots_after_stop if slots_locked
+        end
         # The locks below are released with the world already stopped. If that
         # is where a stop wedges, the report should say so rather than blaming
         # the suspension it has already finished.

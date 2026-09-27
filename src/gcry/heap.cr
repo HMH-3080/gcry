@@ -225,6 +225,13 @@ module Gcry
     @post_stw_mutex = uninitialized Gcry::OS::PthreadMutexT
     @tlab_enabled = false
     @tlab_refills = 0_u64
+    # `GCRY_TLAB_QUIESCE=0` stops the world without first waiting out the TLAB
+    # slots' critical sections, as before 2026-09-27: the A/B arm for
+    # `Heap#lock_tlab_slots_for_stop`.
+    property tlab_quiesce : Bool = true
+    # Threads past `MAX_TLABS` that share a TLAB / alloc-batch slot by key.
+    @tlab_slots_shared = 0_u64
+    @alloc_batch_slots_shared = 0_u64
     # Refills that a collection stopped part-way and that were thrown away.
     @tlab_refill_discards = 0_u64
     # Classes whose list a discarded refill dropped; the next sweep rebuilds
@@ -1103,7 +1110,7 @@ module Gcry
         end
         needs_clear = clear && from_cache
       elsif @nursery_enabled
-        user, clean = if @tlab_enabled
+        user, clean = if @tlab_enabled && !@world_stopped
                         # A thread-local list can contain recycled blocks even
                         # when another thread has a fresh global freelist.
                         {tlab_alloc_small(rounded.to_u32, flags | BlockHeader::Flags::NURSERY, class_index, true, rounded), false}
@@ -1113,7 +1120,14 @@ module Gcry
         needs_clear = clear && !clean
       else
         # TLAB is a freelist mechanism; bitmap allocation must maintain occ.
-        user, clean = if @tlab_enabled && !@bitmap_alloc
+        #
+        # Not while the world is stopped: whoever allocates then — the
+        # collector, or a thread the stop missed in its birth window — would
+        # refill a TLAB the flush had just emptied, the sweep's rebuild would
+        # link the same blocks back onto the class list, and the next flush
+        # would splice that list into a cycle `scrub_freelists` walks forever.
+        # `tlab_alloc_small` checks again for a thread already inside it.
+        user, clean = if @tlab_enabled && !@bitmap_alloc && !@world_stopped
                         {tlab_alloc_small(rounded.to_u32, flags, class_index, false, rounded), false}
                       else
                         alloc_old_small(rounded.to_u32, flags, class_index, rounded)

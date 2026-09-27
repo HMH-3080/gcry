@@ -276,6 +276,37 @@ class Gcry::Heap
     ChunkSearchRace.before_tlab = nil
   end
 
+  # TLAB slots are per thread and a collection empties them. Neither held
+  # from TLAB's first commit until 2026-09-27: the claim and the flush wrote
+  # `@tlabs[i].field`, which assigns to a copy of the struct, so every thread
+  # shared slot 0 and no chain was ever flushed. The sweep then read those
+  # blocks as free while the TLAB kept handing them out
+  # (`bench/log/linux/2026-09-27-dormant-revive-race/`).
+  def chunk_search_tlab_slots_probe : Nil
+    rounded, index = SizeClasses.fit(48_u64)
+    payload = rounded.to_u32
+    self.tlab_enabled = true
+    raise "TLAB refused on the header allocator" unless tlab_enabled?
+    mine = current_tlab
+    unless mine.value.live && mine.value.owner == current_thread_key
+      raise "this thread's TLAB slot was never claimed"
+    end
+    other = Pointer(Tlab).null
+    peer = Thread.new { other = current_tlab }
+    peer.join
+    raise "two threads were given the same TLAB slot" if other == mine
+    refill_size_class(index, payload)
+    raise "TLAB refill returned nothing" if tlab_refill_once(index, payload, false).null?
+    raise "the refill installed nothing in this thread's TLAB" if mine.value.freelists[index].null?
+    @world_stopped = true
+    begin
+      flush_all_tlabs
+    ensure
+      @world_stopped = false
+    end
+    raise "the collection's flush left the TLAB chain in place" unless mine.value.freelists[index].null?
+  end
+
   def chunk_search_stopped_probe : Nil
     @chunk_list_lock.sync do
       @world_stopped = true
@@ -349,7 +380,7 @@ if ARGV.first? == "--child"
     Gcry::SegvReport.install if ENV["GCRY_SEGV_REPORT"]? == "1"
   {% end %}
   heap = Gcry::Heap.new
-  header_mode = {"header-dormant", "handoff-header-dormant", "handoff-tlab-refill"}.includes?(mode)
+  header_mode = {"header-dormant", "handoff-header-dormant", "handoff-tlab-refill", "tlab-slots"}.includes?(mode)
   heap.bitmap_alloc = !header_mode
   heap.gc_threshold = UInt64::MAX
   heap.large_cache_retain = 64_u64 << 20
@@ -383,6 +414,12 @@ if ARGV.first? == "--child"
   pointer = heap.malloc_atomic(40 * 1024)
   chunk = (Gcry::BlockHeader.large_header_from_user(pointer).as(UInt8*) - Gcry::ChunkHeader::SIZE).as(Gcry::ChunkHeader*)
   heap.free(pointer)
+  if mode == "tlab-slots"
+    heap.chunk_search_tlab_slots_probe
+    heap.destroy
+    puts "tlab-slots: one slot per thread, emptied by a collection's flush"
+    exit 0
+  end
   if mode == "stopped"
     heap.chunk_search_stopped_probe
     heap.destroy
@@ -407,7 +444,7 @@ modes = ["pool", "cached-pool", "bitmap-dormant", "header-dormant", "stopped",
 # TLAB is a freelist mechanism: a headerless build refuses it, so the refill
 # arm needs `-Dgcry_block_headers` (`make chunk-search-race` builds both).
 {% if flag?(:gcry_block_headers) %}
-  modes << "handoff-tlab-refill"
+  modes << "handoff-tlab-refill" << "tlab-slots"
 {% end %}
 if i = ARGV.index("--modes")
   modes = ARGV[i + 1].split(',')

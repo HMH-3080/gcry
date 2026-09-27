@@ -1016,7 +1016,7 @@ chunk-search-race: $(BIN)
 	# The header allocator's arms again, on the layout they are about: with
 	# `-Dgcry_block_headers` the freelist is real and TLAB can be enabled.
 	$(CRYSTAL) build -Dgcry_block_headers bench/chunk_search_race.cr -o $(BIN)/chunk_search_race_hdr --error-trace
-	GCRY_SEGV_REPORT=1 $(BIN)/chunk_search_race_hdr --modes header-dormant,handoff-header-dormant,handoff-tlab-refill
+	GCRY_SEGV_REPORT=1 $(BIN)/chunk_search_race_hdr --modes header-dormant,handoff-header-dormant,handoff-tlab-refill,tlab-slots
 
 # A mutator inside `find_block` while collections run.
 #

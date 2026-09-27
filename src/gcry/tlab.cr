@@ -208,14 +208,25 @@ module Gcry
         end
         i += 1
       end
-      tlab = @alloc_lock.sync { current_tlab_under_lock(key) }
-      if tlab.null?
-        oom!("TLAB table full, threads:", MAX_TLABS.to_u64)
-      end
-      tlab
+      @alloc_lock.sync { current_tlab_under_lock(key) }
     end
 
     # Caller must hold @alloc_lock (or be single-threaded).
+    #
+    # Every write to a slot goes through a pointer. `@tlabs[i].owner = key` —
+    # what this said from TLAB's first commit (51ae436, 2026-07-24) until
+    # 2026-09-27 — assigns to a *copy*: `StaticArray#[]` returns the struct by
+    # value. No slot was ever claimed, so every thread got slot 0 and shared
+    # it; and `flush_all_tlabs`, which skips slots that are not live, never
+    # flushed one. A TLAB's chain survived every collection, the sweep read
+    # its blocks as free, made their chunk dormant or relinked them onto the
+    # class list, and the TLAB went on handing them out: zeroed by the dormant
+    # flush, or handed out twice (`bench/log/linux/2026-09-27-dormant-revive-race/`).
+    #
+    # Slots are not released when a thread exits, so a program that has had
+    # more than `MAX_TLABS` allocating threads shares slots by key, as every
+    # thread used to. The slot lock serializes the sharers and the flush now
+    # empties the slot, so a shared slot is slower, not unsound.
     protected def current_tlab_under_lock(key : UInt64 = current_thread_key) : Tlab*
       ensure_tlabs_under_lock
       i = 0
@@ -228,13 +239,15 @@ module Gcry
       i = 0
       while i < MAX_TLABS
         unless @tlabs[i].live
-          @tlabs[i].owner = key
-          @tlabs[i].live = true
-          return @tlabs.to_unsafe + i
+          tlab = @tlabs.to_unsafe + i
+          tlab.value.owner = key
+          tlab.value.live = true
+          return tlab
         end
         i += 1
       end
-      Pointer(Tlab).null
+      @tlab_slots_shared &+= 1
+      @tlabs.to_unsafe + (key % MAX_TLABS).to_i32
     end
 
     # Adaptive batch size: targets ~8 KiB per refill (per-class, clamped to [1, 256]).
@@ -297,6 +310,8 @@ module Gcry
       batch = (8192_u64 / payload.to_u64).to_i32.clamp(1, 256)
       @alloc_lock.sync do
         4.times do
+          # See `tlab_alloc_small`: nothing refills a TLAB in a stopped world.
+          break if @world_stopped
           epoch = @tlab_epoch.get
           head = tlab_refill_locked(class_index, payload, nursery, batch)
           break if @tlab_epoch.get == epoch
@@ -455,6 +470,14 @@ module Gcry
       # lock-free load/store, or two OS threads briefly sharing a slot). Epoch
       # protocol still applies across STW flush.
       32.times do
+        # A thread still running while the world is stopped — one the stop
+        # missed in its birth window, or the collector itself — takes the class
+        # list instead of its TLAB. The flush already emptied the TLABs; a refill
+        # now would sit in one while the sweep relinked the same blocks onto the
+        # class list, and the next flush would splice the list into a cycle.
+        # Measured: every node of such a cycle was installed in a TLAB at the
+        # same epoch as the rebuild that relinked it, both inside the stop.
+        return tlab_bypass(payload, flags, class_index, nursery, rounded) if @world_stopped
         epoch = @tlab_epoch.get
         tlab = current_tlab
         slot = tlab_slot_index(tlab)
@@ -508,7 +531,10 @@ module Gcry
 
         if user.null?
           filled = tlab_refill(class_index, payload, nursery)
-          oom!("failed to refill TLAB size class", payload.to_u64) if filled.null?
+          if filled.null?
+            return tlab_bypass(payload, flags, class_index, nursery, rounded) if @world_stopped
+            oom!("failed to refill TLAB size class", payload.to_u64)
+          end
           next if @tlab_epoch.get != epoch
           next # claim the freshly installed batch under the slot lock
         end
@@ -520,6 +546,16 @@ module Gcry
         return user
       end
       oom!("failed to claim TLAB node size class", payload.to_u64)
+    end
+
+    # The class-list allocation `allocate` uses when TLAB is off.
+    private def tlab_bypass(payload : UInt32, flags : UInt32, class_index : Int32, nursery : Bool, rounded : UInt64) : Void*
+      user, _ = if nursery
+                  alloc_nursery(payload, flags, class_index, rounded)
+                else
+                  alloc_old_small(payload, flags, class_index, rounded)
+                end
+      user
     end
 
     # Return a small object to the current thread's TLAB.
@@ -542,27 +578,68 @@ module Gcry
       @free_bytes.add(payload.to_u64)
     end
 
+    # The collector, just before it stops the world: take every slot lock, so
+    # no mutator is stopped inside a TLAB critical section.
+    #
+    # Until 2026-09-27 a thread could be. `tlab_alloc_small` reads its head
+    # block and that block's `next_free` under the slot lock, then writes the
+    # TLAB head and marks the block USED. Stopped in between, it came back to a
+    # TLAB the flush had emptied and a heap the sweep had changed: the flush had
+    # put its chain on the class list, and the sweep could make the chunk of
+    # that chain dormant and rebuild the list without it. The thread then
+    # returned the block and stored the stale `next_free` as its TLAB head —
+    # so it and the TLAB hits after it came out of a DORMANT chunk the
+    # post-STW flush zeroes. Measured with `GCRY_PARALLEL_DORMANT=1` on
+    # `stw_mt_property_test_hdr --tlab`: every `root N cookie broken` run also
+    # logged a TLAB hit from a DORMANT chunk
+    # (`bench/log/linux/2026-09-27-dormant-revive-race/`).
+    #
+    # Taken last, after `@roots_lock` and the finalizer lock, because nothing
+    # inside a slot's critical section takes those, while code under them can
+    # allocate. A thread spinning here for its slot has not entered the section
+    # and is stopped outside it. Released as soon as the world is stopped: no
+    # mutator can reach a slot then, and `flush_all_tlabs` does not lock them.
+    protected def lock_tlab_slots_for_stop : Bool
+      return false unless @tlabs_booted && @tlab_enabled && @tlab_quiesce
+      i = 0
+      while i < MAX_TLABS
+        (@tlab_slot_locks.to_unsafe + i).value.lock
+        i += 1
+      end
+      true
+    end
+
+    protected def unlock_tlab_slots_after_stop : Nil
+      i = MAX_TLABS - 1
+      while i >= 0
+        (@tlab_slot_locks.to_unsafe + i).value.unlock
+        i -= 1
+      end
+    end
+
     # Flush TLAB freelists back to global (call under STW / before sweep / destroy).
     # Bump epoch first so resumed mid-alloc abandons stale TLAB heads already
     # published here. Walks each chain and splices only FREE nodes.
     protected def flush_all_tlabs : Nil
       return unless @tlabs_booted && @tlab_enabled
       @tlab_epoch.add(1)
-      # No per-slot locks: callers run under STW. A suspended mutator may hold
-      # lock_tlab_slot; taking it here livelocks the collector.
+      # No per-slot locks: callers run under STW, and the collector took every
+      # slot lock before stopping it (`lock_tlab_slots_for_stop`), so no mutator
+      # is stopped inside a slot's critical section.
       MAX_TLABS.times do |i|
         next unless @tlabs[i].live
+        tlab = @tlabs.to_unsafe + i
         SIZE_CLASS_COUNT.times do |c|
-          head = @tlabs[i].freelists[c]
+          head = tlab.value.freelists[c]
           unless head.null?
             @freelists[c] = splice_free_nodes(head, @freelists[c])
-            @tlabs[i].freelists[c] = Pointer(Void).null
+            tlab.value.freelists[c] = Pointer(Void).null
           end
 
-          head = @tlabs[i].nursery_freelists[c]
+          head = tlab.value.nursery_freelists[c]
           unless head.null?
             @nursery_freelists[c] = splice_free_nodes(head, @nursery_freelists[c])
-            @tlabs[i].nursery_freelists[c] = Pointer(Void).null
+            tlab.value.nursery_freelists[c] = Pointer(Void).null
           end
         end
       end
@@ -681,11 +758,7 @@ module Gcry
         end
         i += 1
       end
-      ab = @alloc_lock.sync { current_alloc_batch_under_lock(key) }
-      if ab.null?
-        oom!("alloc-batch table full, threads:", MAX_TLABS.to_u64)
-      end
-      ab
+      @alloc_lock.sync { current_alloc_batch_under_lock(key) }
     end
 
     private def current_alloc_batch_under_lock(key : UInt64 = current_thread_key) : AllocBatch*
@@ -700,13 +773,17 @@ module Gcry
       i = 0
       while i < MAX_TLABS
         unless @alloc_batches[i].live
-          @alloc_batches[i].owner = key
-          @alloc_batches[i].live = true
-          return @alloc_batches.to_unsafe + i
+          # Through a pointer, as in `current_tlab_under_lock`: indexing
+          # returns a copy.
+          ab = @alloc_batches.to_unsafe + i
+          ab.value.owner = key
+          ab.value.live = true
+          return ab
         end
         i += 1
       end
-      Pointer(AllocBatch).null
+      @alloc_batch_slots_shared &+= 1
+      @alloc_batches.to_unsafe + (key % MAX_TLABS).to_i32
     end
 
     # Pop one USED node from the thread stash, or refill under freelist lock.
@@ -866,10 +943,11 @@ module Gcry
       # No per-slot locks under STW (same rationale as flush_all_tlabs).
       MAX_TLABS.times do |i|
         next unless @alloc_batches[i].live
+        ab = @alloc_batches.to_unsafe + i
         SIZE_CLASS_COUNT.times do |c|
-          head = @alloc_batches[i].freelists[c]
+          head = ab.value.freelists[c]
           next if head.null?
-          @alloc_batches[i].freelists[c] = Pointer(Void).null
+          ab.value.freelists[c] = Pointer(Void).null
           payload = SizeClasses.payload(c)
           user = head
           n = 0_u64
