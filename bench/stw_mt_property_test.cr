@@ -83,6 +83,18 @@ ARGV.each do |arg|
   end
 end
 
+class Gcry::Heap
+  # The flags of the chunk `ptr` lies in, 0 when none: for a broken-cookie
+  # report (`ChunkHeader::Flags`).
+  def debug_chunk_flags(ptr : Void*) : UInt32
+    if chunk = chunk_containing(ptr.address)
+      chunk.value.flags
+    else
+      0_u32
+    end
+  end
+end
+
 MAGIC     = 0xC0FF_EE42_C0FF_EE01_u64
 OBJ_BYTES =                        64
 
@@ -159,7 +171,14 @@ class StwMtPropertyTest
         next
       end
       unless ptr.as(UInt64*).value == MAGIC
-        record_error("#{label}: root #{i} cookie broken")
+        # What overwrote it: zeros are a page release or a clearing allocation
+        # of the same block, another serial a second cookie writer. The chunk
+        # flags say whether it was dormant or holed when this ran.
+        words = ptr.as(UInt64*)
+        record_error("#{label}: root #{i} cookie broken (#{ptr}) " \
+                     "words=0x#{words[0].to_s(16)},0x#{words[1].to_s(16)} " \
+                     "block=#{Gcry.default_heap.debug_block_info(ptr)} " \
+                     "chunk_flags=0x#{Gcry.default_heap.debug_chunk_flags(ptr).to_s(16)}")
         ok = false
       end
     end
