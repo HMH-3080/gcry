@@ -89,3 +89,10 @@ configuration, built from `db50034`, 5 lanes, 2 h (`campaign-summary.md`).
 It ran **1674 runs over 10.1 lane-hours: 0 failures, 0 timeouts**. That
 includes 458 `stw_mt` runs (Parallel workers at 2, 4 and 8, diagnostics on
 in two thirds of them), 152 `thread_storm` and 152 `pattern_fuzz+diag`.
+
+`make soft-soak-ec4` (Kemal EC4, `wrk -c100 -d8 /json` × 40, the Parallel
+correctness gate) on `986e8c0`: **40/40, soft 0, hard 0**. With
+`GCRY_POISON_FREED=1` it was **40/40, soft 0, hard 0** as well.
+
+CI soak, 3 × 5 h at `--workers=4` so that every collection is multi-mutator
+(run `36341297555`): PENDING.
