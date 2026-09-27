@@ -275,7 +275,17 @@ That timeout is Crystal's scheduler deadlock: both workers are in
 `parallel/scheduler.cr:97` `resume`, with no collector frame
 (`bench/log/linux/2026-09-25-parallel-scheduler-deadlock/`).
 
-This load did not reproduce the defect on master. The same master binary had
+At the load where master does fail, two harnesses at once, 3 runs each,
+same seeds (200000–200299):
+
+| binary | cookie broken | hangs |
+|---|---:|---:|
+| master (`cfbf386`) | **7 / 300** | 0 |
+| fix (`3299e74`) | **0 / 300** | 1, Crystal's scheduler deadlock again |
+
+(`captures/master-cookie-200187.log`: `words=0x0,0x0 ... chunk_flags=0x2`.)
+
+The four-harness load did not reproduce the defect on master. The same master binary had
 failed 68 of 1500 (five at a time) and 21 of 300 earlier, and the fix is
 0 of 1650 across every run above. The proof is the gates. `tlab-slots`,
 `handoff-tlab-refill` and `handoff-header-dormant` each fail every run on
