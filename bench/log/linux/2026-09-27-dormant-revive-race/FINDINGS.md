@@ -310,3 +310,17 @@ Only the header allocator was affected.
   they exist by default, from the 512 KiB budget. It was reachable there in
   headered builds without TLAB. [INFERENCE: the non-TLAB revival has the same
   flag order; the lanes did not measure it.]
+
+## The same campaign on the fixed code
+
+`run-dormant.py 2 5` again: every lane with `GCRY_PARALLEL_DORMANT=1`,
+binaries built from `0c04eee` (`campaign2-summary.md`). It ran 1997 runs over
+10.1 lane-hours with **0 failures**.
+
+There were five timeouts. Each is Crystal's scheduler deadlock: two workers
+in `parallel/scheduler.cr:97` `resume`, with no collector frame anywhere.
+They fell on `stw_mt` ×2, `stw_mt+diag`, `stw_mt_hdr_tlab` and
+`stw_mt_hdr_tlab_nursery` (seeds 20002, 20136, 20140, 20162, 20118).
+
+The headered TLAB lanes, which hung 36 of 36 and then broke 4 of 79 cookies
+in the first campaign, ran 364 times: 0 failures, 2 of those deadlocks.
