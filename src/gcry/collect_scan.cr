@@ -1225,12 +1225,16 @@ module Gcry
       # Measured before the change: at EC1 with one extra thread, the lag
       # window was 1.0 of a 1.95 ms pause p50 (8 of 8 rounds); at EC4, 0.97
       # of ~6.4 ms. `GCRY_PARKED_FIBER_SP=0` restores the lag here.
-      if @parked_fiber_sp && @fiber_sp_all_known
+      #
+      # Not at lag 0: that is `GCRY_SOUND=1` or an explicit
+      # `GCRY_STW_STACK_LAG=0`, a request to scan every parked fiber whole, and
+      # it keeps meaning that.
+      lag = @stw_multi_stack_lag
+      if @parked_fiber_sp && @fiber_sp_all_known && lag != 0
         @fiber_scan_parked_sp &+= 1
         return t
       end
 
-      lag = @stw_multi_stack_lag
       # 0 ⇒ classic full parked-fiber scan (correctness A/B; thr regresses).
       #
       # "Full" only has to mean every word that can hold a pointer. A fiber
