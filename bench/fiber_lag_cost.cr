@@ -41,6 +41,9 @@ DEPTH = 64
 DEEP_BYTES = (ENV["LAG_DEEP_BYTES"]?.try(&.to_i?) || 512 * 1024)
 
 heap = Gcry.default_heap.not_nil!
+# Measures the lag window, which a parked fiber with a trustworthy saved SP
+# bypasses since 2026-09-27 (`GCRY_PARKED_FIBER_SP`); pinned on here.
+heap.parked_fiber_sp = false
 
 # Touch `bytes` of stack and return, leaving those pages faulted.
 @[NoInline]

@@ -57,6 +57,11 @@ require "../src/gcry"
 {% end %}
 
 HEAP = Gcry.default_heap.not_nil!
+# This harness measures the lag window and the low-water probe behind it. Since
+# 2026-09-27 a parked fiber is scanned from its saved SP whenever every thread
+# that can run a fiber has one, which bypasses both, so they are pinned on here.
+# They remain the path for a stop that could not record every such SP.
+HEAP.parked_fiber_sp = false
 
 disabled = ARGV.includes?("--disabled")
 # `--resident-off` (Darwin): the red arm of the resident-count check below, run
