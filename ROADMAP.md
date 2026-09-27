@@ -965,6 +965,18 @@ kept finding the rest.
       Naming, placing and walking a thread is also still not showing that
       anything is reachable only from it.
       `bench/log/linux/2026-09-19-thread-census-names/FINDINGS.md`
+      **A thread still running in a stopped world was seen allocating
+      (2026-09-27).** In a headered `stw_mt_property_test --tlab` run, a
+      per-block event history recorded a TLAB refill **while the world was
+      stopped**, at the run's second collection, into slot 3. The same sweep's
+      rebuild then relinked those blocks. Which thread it was is not recorded.
+      [INFERENCE] A worker the stop missed at birth fits: the same harness
+      prints the "staged AFTER the wait ran" audit line on CI (Darwin,
+      2026-09-26), which would mean the staged wait has a residual window. The
+      capture itself does not carry that line.
+      TLAB now refuses to be used in a stopped world. The class-list
+      allocation such a thread falls back to still races the in-STW sweep.
+      `bench/log/linux/2026-09-27-dormant-revive-race/FINDINGS.md` §4b
 - [x] **An aarch64 SEGV in `pthread_getattr_np`, now seen twice — closed
       2026-09-26: 0 sightings in the 511 CI runs since the birth root.** A census
       of every aarch64 job since 2026-08-18 (2 562 jobs, 537 runs) found six

@@ -237,10 +237,10 @@ had emptied it. The sweep's rebuild then linked the same blocks onto the
 class list, and the next flush spliced them in again. The thread is either:
 
 - the collector, or
-- a thread the stop missed. Epoch 2 is the second collection, when the
-  context's worker threads are being born, and the CI log carries the
-  matching `a thread was staged AFTER the wait ran — the world stopped without
-  it` audit line.
+- a thread the stop missed. [INFERENCE] Epoch 2 is the second collection,
+  when the context's worker threads are being born, and this harness prints
+  `a thread was staged AFTER the wait ran — the world stopped without it` on
+  CI. The capture does not record which thread it was.
 
 Fix: nothing uses a TLAB while the world is stopped. `allocate` checks it,
 and so does every iteration of `tlab_alloc_small`, for a thread that entered
