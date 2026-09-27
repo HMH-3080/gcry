@@ -85,8 +85,31 @@ else running, `--release`, code at `16c1f72`:
 | depth 14 × 160 | 1.006 (0.955–1.052) | 1.004 (0.929–1.045) | **0.41×** | 0.94× |
 
 The time cost is inside what the null arm moves: 35.2 → 8.9 MB and
-15.6 → 6.4 MB after `GC.collect`, for no measurable time. Together with the
-Kemal matrix above (1.02× throughput, 1.01× pause, 0.25× RSS on the CI
-runner), nothing measured so far argues for keeping it opt-in on Linux. What
-is still missing before a default change: the soft-soak gate with it on, and
-the macOS side, which is the `MADV_FREE` item.
+15.6 → 6.4 MB after `GC.collect`, for no measurable time.
+
+## Under high concurrency it does cost throughput: it stays opt-in
+
+The soft-soak shape is heavier than the matrix: EC4 Kemal, `wrk -c100 -d8
+/json`. `make soft-soak-ec4` with the knob on passes 40/40 (soft 0, hard 0),
+but its median was 235k req/s against 280k for the control run after it. The
+two runs were sequential, so that says nothing by itself.
+
+Paired on that shape (`paired_kemal.py`, 16 rounds, off / on / off2 rotated,
+same binary `bin/kemal-gcry-soft-soak`, local host otherwise idle):
+
+| arm | median req/s | RSS at the end of the load |
+|---|---:|---:|
+| off | 269 421 | 84.8 MB |
+| on | 240 522 | **53.8 MB** |
+| off2 (null) | 274 953 | 84.7 MB |
+
+- on/off: **0.914** (0.738–1.128). The null off2/off is 1.058 (0.810–1.323).
+- The on arm was below off in 15 of 16 rounds and below off2 in 15 of 16
+  (sign test p ≈ 0.0003).
+- A 10-round run before it gave on/off 0.825 with null 1.065.
+
+So at this concurrency the opt-in costs about a tenth of the throughput, for
+about a third off the RSS under load. The CI matrix (1.02×) ran a lighter
+load and did not see it. This matches the old note beside the flag, "thr
+~25%", in direction if not size. It stays opt-in, as documented: an RSS
+lever for programs that want it.
