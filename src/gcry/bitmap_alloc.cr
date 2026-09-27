@@ -991,6 +991,10 @@ module Gcry
         end
       end
       return {nil, true} if refused
+      # The chunk is this thread's cursor now and nothing allocates from it
+      # until this returns: announce the reuse of its released pages here.
+      lo, hi = dormant_release_range(chunk)
+      Platform.reuse_released_pages(lo, hi - lo) if hi > lo
       mapped = chunk.value.mapped_bytes
       @dormant_chunk_bytes -= mapped if @dormant_chunk_bytes >= mapped
       words = chunk.value.bitmap_words.to_i32

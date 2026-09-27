@@ -2027,6 +2027,10 @@ module Gcry
         return false
       end
 
+      # Announce the reuse before the first header write (Darwin reusable pages).
+      lo, hi = dormant_release_range(chunk)
+      Platform.reuse_released_pages(lo, hi - lo) if hi > lo
+
       block_bytes = BlockHeader::SIZE.to_u64 + payload.to_u64
       cursor = ChunkHeader.data_start(chunk).as(UInt8*)
       limit = ChunkHeader.data_end(chunk).as(UInt8*)
@@ -2095,6 +2099,31 @@ module Gcry
       header.value = BlockHeader.new(header.value.size, BlockHeader::Flags::FREE, rest)
     end
 
+    # Clear DORMANT outside a revival, taking the released pages back first.
+    private def reuse_dormant(chunk : ChunkHeader*) : Nil
+      lo, hi = dormant_release_range(chunk)
+      Platform.reuse_released_pages(lo, hi - lo) if hi > lo
+      ChunkHeader.set_dormant(chunk, false)
+    end
+
+    # The pages a dormant chunk's release covers, and so the pages a revival
+    # takes back: whole host pages from the first at or above `data_start`
+    # (the metadata page stays resident) to the end of the mapping.
+    protected def dormant_release_range(chunk : ChunkHeader*) : {UInt64, UInt64}
+      page = Platform.host_page_size
+      base = ChunkHeader.data_start(chunk).address
+      finish = chunk.address + chunk.value.mapped_bytes
+      {(base + page - 1) & ~(page - 1), finish & ~(page - 1)}
+    end
+
+    # The same for a cached large chunk (`release_large_freelist_pages`).
+    protected def large_release_range(chunk : ChunkHeader*) : {UInt64, UInt64}
+      page = Platform.host_page_size
+      data_lo = @large_release_from_base ? chunk.address : ChunkHeader.data_start(chunk).address
+      data_hi = chunk.address + chunk.value.mapped_bytes
+      {(data_lo + page - 1) & ~(page - 1), data_hi & ~(page - 1)}
+    end
+
     # Returns {user, from_cache}. Fresh mmap pages are already zeroed.
     # Mapped size is host-page aligned (16 KiB on Apple Silicon) so Darwin
     # free-page reclaim and munmap stay page-correct.
@@ -2108,6 +2137,10 @@ module Gcry
 
       if user = take_large_free(mapped)
         header = BlockHeader.large_header_from_user(user)
+        # A cached chunk's pages may have been released reusable at the last
+        # major; take them back before anything writes the object.
+        lo, hi = large_release_range((header.as(UInt8*) - ChunkHeader::SIZE).as(ChunkHeader*))
+        Platform.reuse_released_pages(lo, hi - lo) if hi > lo
         # Root the block until the caller holds its user pointer: a mutator
         # stopped by signal between `set_used_large` and its return holds only
         # `header`/`chunk`, which `base_only` rejects, and the sweep would take

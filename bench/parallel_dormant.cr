@@ -15,6 +15,12 @@
 #   --expect-dormant   the opt-in must have made empties dormant
 #   --expect-inert     the red arm: run with GCRY_EMPTY_CHUNK_RETAIN=0, the
 #                      pre-fix budget, and nothing may be dormant
+#   --expect-footprint-drop  macOS: the collection must take at least half of
+#                      the dormant bytes out of `phys_footprint`
+#                      (`MADV_FREE_REUSABLE`)
+#   --expect-footprint-kept  macOS red arm, with GCRY_DARWIN_REUSABLE=0: it
+#                      must not (`MADV_FREE`, measured 60 → 51 MB with 44 MB
+#                      dormant), or the check above cannot tell them apart
 #
 #   crystal build -Dgc_none bench/parallel_dormant.cr -o bin/parallel_dormant
 require "../src/gcry"
@@ -33,9 +39,9 @@ def rss_kib : UInt64
   {% end %}
 end
 
-# macOS: dormancy is `MADV_FREE_REUSABLE`, and `ps` keeps counting such pages
-# as resident until the kernel takes them; the footprint the system charges
-# the task (`TASK_VM_INFO.phys_footprint`, byte 144) does not. Printed beside
+# macOS: `ps` RSS can keep counting released pages as resident until the
+# kernel takes them; the footprint the system charges the task
+# (`TASK_VM_INFO.phys_footprint`, byte 144) is what a reusable release lowers. Printed beside
 # RSS so the two can be told apart. Through gcry's own `task_info` binding: a
 # C function bound twice must be bound identically.
 def footprint_kib : UInt64?
@@ -53,6 +59,8 @@ end
 
 expect_dormant = ARGV.includes?("--expect-dormant")
 expect_inert = ARGV.includes?("--expect-inert")
+expect_fp_drop = ARGV.includes?("--expect-footprint-drop")
+expect_fp_kept = ARGV.includes?("--expect-footprint-kept")
 
 fds = uninitialized Int32[2]
 raise "pipe() failed" unless LibC.pipe(fds) == 0
@@ -116,4 +124,20 @@ if expect_inert && dormant != 0
   puts "FAIL: red arm: with a zero budget #{dormant >> 20} MB still went dormant, so this gate cannot tell the opt-in working from not"
   exit 1
 end
-puts "  PASS" if expect_dormant || expect_inert
+if expect_fp_drop || expect_fp_kept
+  pf = peak_fp
+  af = after_fp
+  abort "FAIL: no phys_footprint on this platform, so the footprint arms cannot run" unless pf && af
+  abort "FAIL: nothing went dormant, so the footprint arms measure nothing" if dormant == 0
+  dropped = pf > af ? pf - af : 0_u64
+  half = (dormant // 1024) // 2
+  if expect_fp_drop && dropped < half
+    puts "FAIL: #{dormant >> 20} MB went dormant but the footprint fell only #{dropped // 1024} MB — the release is not leaving phys_footprint (MADV_FREE, not MADV_FREE_REUSABLE?)"
+    exit 1
+  end
+  if expect_fp_kept && dropped >= half
+    puts "FAIL: red arm: with MADV_FREE the footprint still fell #{dropped // 1024} MB of #{dormant >> 20} MB dormant, so this gate cannot tell the two releases apart"
+    exit 1
+  end
+end
+puts "  PASS" if expect_dormant || expect_inert || expect_fp_drop || expect_fp_kept

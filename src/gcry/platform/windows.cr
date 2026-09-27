@@ -89,6 +89,14 @@ module Gcry::Platform
     true
   end
 
+  # The release above recommits at once, so reuse needs nothing further.
+  def self.release_reusable_pages(addr : UInt64, len : UInt64) : Bool
+    release_physical_pages(addr, len)
+  end
+
+  def self.reuse_released_pages(addr : UInt64, len : UInt64) : Nil
+  end
+
   def self.page_readable?(addr : UInt64) : Bool
     return false if LibC.VirtualQuery(Pointer(Void).new(addr), out info, sizeof(LibC::MEMORY_BASIC_INFORMATION)) == 0
     memory_readable?(info)

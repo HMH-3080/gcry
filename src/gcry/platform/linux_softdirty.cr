@@ -134,6 +134,16 @@ module Gcry
       {% end %}
     end
 
+    # The Darwin pair (`MADV_FREE_REUSABLE` / `MADV_FREE_REUSE`) needs its
+    # reuse announced; here the release is `MADV_DONTNEED` and the next touch
+    # simply faults a zero page in.
+    def self.release_reusable_pages(addr : UInt64, len : UInt64) : Bool
+      release_physical_pages(addr, len)
+    end
+
+    def self.reuse_released_pages(addr : UInt64, len : UInt64) : Nil
+    end
+
     # Lightweight hint: mark pages as cold so the kernel reclaims them first
     # under memory pressure, but keep content valid.  Cheaper than DONTNEED for
     # dormant chunks that may be revived soon — no page-zeroing on revive.

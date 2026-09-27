@@ -824,6 +824,9 @@ module GC
     # `stw_lag_pause --resident-off`.
     {% if flag?(:darwin) %}
       Gcry::Platform.resident_low_water = false if env_flag_zero?("GCRY_DARWIN_RESIDENT_LOW_WATER")
+      # Dormant chunks and the large cache release with `MADV_FREE_REUSABLE`;
+      # `0` restores `MADV_FREE`, the red arm of `make parallel-dormant`.
+      Gcry::Platform.reusable_release = false if env_flag_zero?("GCRY_DARWIN_REUSABLE")
     {% end %}
     # Multi-mutator pthread map when SP is off the OS stack (on a pool fiber).
     # Default 256 KiB from stack high; 0 = full pthread mapping.

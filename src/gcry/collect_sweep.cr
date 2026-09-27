@@ -252,10 +252,10 @@ module Gcry
                     end
                   elsif ChunkHeader.dormant?(chunk)
                     # release off: clear stale dormant from a prior process config.
-                    ChunkHeader.set_dormant(chunk, false)
+                    reuse_dormant(chunk)
                   end
                 else
-                  ChunkHeader.set_dormant(chunk, false) if ChunkHeader.dormant?(chunk)
+                  reuse_dormant(chunk) if ChunkHeader.dormant?(chunk)
                   # Free-page physical release: detect free pages in STW, set HOLED
                   # flag; actual madvise runs post-STW in flush_pending_page_release.
                   # `!bitmap_alloc_chunk?`: free-page release is not ported to
@@ -747,26 +747,18 @@ module Gcry
 
       data_lo = UInt64::MAX
       data_hi = 0_u64
-      page = Platform.host_page_size
 
+      # Reusable on Darwin: a revival owes `reuse_released_pages` over
+      # `dormant_release_range`, which is exactly what goes out here.
       each_chunk do |chunk|
         next unless ChunkHeader.dormant?(chunk)
-        base = ChunkHeader.data_start(chunk).address
-        # `chunk.address + mapped_bytes`, not `base + mapped_bytes`: the chunk
-        # ends where its mapping ends, and `base` is `data_offset` bytes past
-        # the chunk start. The old expression overshot by exactly that much and
-        # was correct only because `end_page` rounded back down over a
-        # sub-page offset — an accident a larger metadata region would not
-        # survive. Flagged in 2026-09-03-large-freelist-header-madvise.
-        finish = chunk.address + chunk.value.mapped_bytes
-        start_page = (base + page - 1) & ~(page - 1)
-        end_page = finish & ~(page - 1)
+        start_page, end_page = dormant_release_range(chunk)
         if start_page < end_page
           if data_hi == start_page
             data_hi = end_page
           else
             if data_hi > data_lo
-              Platform.release_physical_pages(data_lo, data_hi - data_lo)
+              Platform.release_reusable_pages(data_lo, data_hi - data_lo)
               @dontneed_bytes += data_hi - data_lo
             end
             data_lo = start_page
@@ -775,7 +767,7 @@ module Gcry
         end
       end
       if data_hi > data_lo
-        Platform.release_physical_pages(data_lo, data_hi - data_lo)
+        Platform.release_reusable_pages(data_lo, data_hi - data_lo)
         @dontneed_bytes += data_hi - data_lo
       end
       @dormant_flush_active = false
@@ -1021,9 +1013,8 @@ module Gcry
     # physical pages hot (the entire mmap is one object, so partial-page reclaim
     # does not apply).
     #
-    # On Darwin: MADV_FREE_REUSABLE drops RSS while preserving page contents —
-    # the next allocation from the cache pays a page-fault cost instead of a
-    # syscall.
+    # On Darwin: `MADV_FREE_REUSABLE` drops the footprint at once; the hand-out
+    # in `alloc_large` announces the reuse over `large_release_range`.
     # On Linux: MADV_FREE — kernel may defer reclaim until memory pressure
     # rises; page content is preserved until reclaimed.  Unlike
     # MADV_DONTNEED (which zeroes and evicts immediately), this avoids the
@@ -1042,26 +1033,21 @@ module Gcry
 
     private def release_large_freelist_pages_locked : Nil
       {% if flag?(:darwin) || flag?(:linux) %}
-        page = Platform.host_page_size
         LARGE_FREE_BUCKETS.times do |b|
           user = @large_freelists[b]
           while user
             header = BlockHeader.large_header_from_user(user)
             chunk = (header.as(UInt8*) - ChunkHeader::SIZE).as(ChunkHeader*)
             next_user = header.value.next_free
-            # Round up from `data_start`, not from the chunk base. The base is
+            # Rounds up from `data_start`, not from the chunk base: the base is
             # already page-aligned, so rounding up from it is a no-op and the
             # range began at page 0 — the page holding this chunk's own
             # `ChunkHeader` and the `BlockHeader` whose `next_free` threads this
-            # very bucket chain. Every sibling release site rounds up from
-            # `data_start` for this reason (:615, :1059).
-            data_lo = @large_release_from_base ? chunk.address : ChunkHeader.data_start(chunk).address
-            data_hi = chunk.address + chunk.value.mapped_bytes
-            start = (data_lo + page - 1) & ~(page - 1)
-            finish = data_hi & ~(page - 1)
+            # very bucket chain (`large_release_range`).
+            start, finish = large_release_range(chunk)
             if start < finish && madvise_range_ok?(chunk, start, finish)
               ok = {% if flag?(:darwin) %}
-                     Platform.release_physical_pages(start, finish - start)
+                     Platform.release_reusable_pages(start, finish - start)
                    {% else %}
                      Platform.release_physical_pages_free(start, finish - start)
                    {% end %}
@@ -1729,23 +1715,6 @@ module Gcry
       end
       @prefer_freelists[class_index] = prefer
       @freelists[class_index] = global
-    end
-
-    # Drop RSS for a fully-free chunk while keeping the VMA (dormant reuse).
-    # Addr/len must be page-aligned into the data region.
-    private def dontneed_chunk_data(chunk : ChunkHeader*) : Nil
-      {% if flag?(:linux) || flag?(:darwin) || flag?(:win32) %}
-        page = Platform.host_page_size
-        data0 = ChunkHeader.data_start(chunk).address
-        data1 = ChunkHeader.data_end(chunk).address
-        start = (data0 + page - 1) & ~(page - 1)
-        finish = data1 & ~(page - 1)
-        return if finish <= start
-        len = finish - start
-        if Platform.release_physical_pages(start, len)
-          @dontneed_bytes += len
-        end
-      {% end %}
     end
 
     # Drop RSS for free pages that hold no live blocks.

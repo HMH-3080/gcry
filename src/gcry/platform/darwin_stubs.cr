@@ -87,24 +87,48 @@ module Gcry
         sz > 0 ? sz.to_u64 : 16384_u64
       end
 
-      # Drop physical pages while keeping the VA reserved.
-      #
-      # Advice 5 is `MADV_FREE`, **not** `MADV_FREE_REUSABLE` (7), whatever the
-      # comments elsewhere in the tree say: the kernel takes the pages only
-      # under memory pressure, and until then they count in both `ps` RSS and
-      # `phys_footprint`. Measured 2026-09-26 (`make parallel-dormant` on the
-      # macOS runner): 44 MB of empty chunks made dormant and footprint 51 MB
-      # with or without it. Content may linger or read zero — do not rely on
-      # either. Moving to `MADV_FREE_REUSABLE` would drop footprint at once but
-      # needs `MADV_FREE_REUSE` wherever a released page is used again, or the
-      # footprint under-counts (ROADMAP).
+      # <sys/mman.h>
+      MADV_FREE          = 5
+      MADV_FREE_REUSABLE = 7
+      MADV_FREE_REUSE    = 8
+
+      # `GCRY_DARWIN_REUSABLE=0`: release with `MADV_FREE` everywhere, as
+      # before 2026-09-27. The red arm of `make parallel-dormant` on Darwin.
+      class_property reusable_release : Bool = true
+
+      # Drop physical pages while keeping the VA reserved, with `MADV_FREE`:
+      # the kernel takes the pages only under memory pressure, and until then
+      # they count in both `ps` RSS and `phys_footprint`. Only the free-page
+      # walk uses this, because a page there is used again by whichever
+      # allocation lands in it, with no single place to announce the reuse.
+      # Content may linger or read zero — do not rely on either.
       # Ranges must be host-page aligned (16 KiB on Apple Silicon).
       def self.release_physical_pages(addr : UInt64, len : UInt64) : Bool
+        madvise_aligned(addr, len, MADV_FREE)
+      end
+
+      # `MADV_FREE_REUSABLE`: the pages leave `phys_footprint` at once. The
+      # caller owes a `reuse_released_pages` over the same range before it
+      # touches them again, or the task's footprint under-counts memory it is
+      # using. Content may read zero afterwards.
+      #
+      # Until 2026-09-27 every release on Darwin was `MADV_FREE` although the
+      # tree said `MADV_FREE_REUSABLE`: `make parallel-dormant` on the runner
+      # made 44 MB dormant and the footprint stayed at 51 MB either way.
+      def self.release_reusable_pages(addr : UInt64, len : UInt64) : Bool
+        madvise_aligned(addr, len, @@reusable_release ? MADV_FREE_REUSABLE : MADV_FREE)
+      end
+
+      def self.reuse_released_pages(addr : UInt64, len : UInt64) : Nil
+        madvise_aligned(addr, len, MADV_FREE_REUSE) if @@reusable_release
+      end
+
+      private def self.madvise_aligned(addr : UInt64, len : UInt64, advice : Int32) : Bool
         return false if len == 0
         page = host_page_size
         return false if (addr & (page - 1)) != 0
         return false if (len & (page - 1)) != 0
-        LibC.madvise(Pointer(Void).new(addr), LibC::SizeT.new(len), 5) == 0
+        LibC.madvise(Pointer(Void).new(addr), LibC::SizeT.new(len), advice) == 0
       end
     {% end %}
   end
