@@ -820,6 +820,10 @@ module GC
     if env_flag_zero?("GCRY_STACK_LOW_WATER")
       heap.stack_low_water_scan = false
     end
+    # A parked fiber is scanned from its saved `stack_top` when every thread
+    # that can run a fiber has a recorded SP. `0` keeps the lag window for all
+    # of them (A/B, and the escape hatch).
+    heap.parked_fiber_sp = false if env_flag_zero?("GCRY_PARKED_FIBER_SP")
     # Darwin: prove a large range untouched from the VM object's resident count
     # instead of asking about every page (`platform/darwin_low_water.cr`).
     # `0` restores the per-page query everywhere — A/B, and the red arm of

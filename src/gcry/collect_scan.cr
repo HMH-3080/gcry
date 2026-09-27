@@ -1088,6 +1088,12 @@ module Gcry
     # has its SP in one of them, and that one is scanned from the SP.
     @fiber_sp_all_known = false
 
+    # `GCRY_PARKED_FIBER_SP=0` scans every parked fiber through the lag window
+    # again, as before 2026-09-27 (`fiber_stack_scan_top`).
+    property parked_fiber_sp : Bool = true
+    # Parked fibers scanned from their saved `stack_top` under multi-mutator STW.
+    getter fiber_scan_parked_sp : UInt64 = 0_u64
+
     # Where to start scanning another thread's stack: the SP the stop recorded
     # for it, or — for the idle collector, which Linux does not suspend — the
     # SP it published while parked, or its guard page, i.e. all of it, while
@@ -1127,6 +1133,12 @@ module Gcry
         next if thread == current
         sp = other_thread_scan_sp(thread)
         unless sp
+          # SYSMON and the idle collector are never signalled, so they never
+          # have an SP here; they also never run a user fiber — each only ever
+          # runs its own thread's main fiber — so neither can be on this stack.
+          # Until 2026-09-27 they counted as unknown, which made the table
+          # incomplete at every multi-mutator stop (0 of 34 989 at Kemal EC4).
+          next if @parked_fiber_sp && stw_signal_exempt?(thread)
           all_known = false
           next
         end
@@ -1196,6 +1208,27 @@ module Gcry
       t = fiber.@context.stack_top.address
       t = guard if t < guard
       return t unless stw_multi
+
+      # Parked, and no thread that can run a fiber is on this stack: its saved
+      # `stack_top` is exact, so scan from it as the single-mutator path does.
+      #
+      # `running?` is `resumable == 0`, and `swapcontext` writes it in an order
+      # that makes this safe (fiber/context/*.cr): switching out, it stores
+      # `stack_top` and only then `resumable = 1`, with every register it
+      # saves already pushed above `stack_top`; switching in, it sets the
+      # target's `resumable = 0` *before* SP moves onto the target's stack.
+      # So a fiber that reads parked has no frame below `stack_top`, and a
+      # thread caught between those stores is either still on the old stack
+      # or on this one — where the SP check above finds it. The lag remains
+      # for what that check cannot see: a thread with no SP recorded.
+      #
+      # Measured before the change: at EC1 with one extra thread, the lag
+      # window was 1.0 of a 1.95 ms pause p50 (8 of 8 rounds); at EC4, 0.97
+      # of ~6.4 ms. `GCRY_PARKED_FIBER_SP=0` restores the lag here.
+      if @parked_fiber_sp && @fiber_sp_all_known
+        @fiber_scan_parked_sp &+= 1
+        return t
+      end
 
       lag = @stw_multi_stack_lag
       # 0 ⇒ classic full parked-fiber scan (correctness A/B; thr regresses).
