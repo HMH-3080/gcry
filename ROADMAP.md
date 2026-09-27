@@ -462,6 +462,12 @@ kept finding the rest.
       The per-fiber high-water mark this item proposed does not work either:
       a fiber's deepest-ever SP is *below* its current one, so a scan starting
       there is wider than the lag window, not narrower.
+      **Done another way, 2026-09-27.** The predicate needs no STW protocol
+      change: SYSMON and the idle collector never run a user fiber, so their
+      missing SP says nothing about a pool fiber's stack. With them excluded
+      the table is complete, and parked fibers are scanned from `stack_top`.
+      EC4 pause 2.53 → 0.81 ms, more than the 0.97 ms ceiling above, because
+      the pagemap probes go too (`bench/log/linux/2026-09-27-parked-fiber-sp/`).
       `bench/log/linux/2026-09-13-fiber-lag-cost/FINDINGS.md`
       `bench/log/linux/2026-09-14-parked-fiber-lag-ceiling/FINDINGS.md`
 - [x] **Audit root coverage for the EC Parallel scheduler — closed 2026-09-26.**
@@ -3628,6 +3634,13 @@ draw of `bench/log/macos/2026-08-10-053800/` — which is what makes it schedula
       pause, RSS 1.37× → 1.00×; Darwin EC4 sound roots 19.3 → 3.1 ms.
       `bench/log/linux/2026-09-26-sound-matrix/FINDINGS.md`
 - [ ] **One extra thread costs an EC1 program 2.7× pause and +63% RSS.**
+      **The pause half is fixed (2026-09-27): 2.00 → 0.59 ms**, against 0.50
+      with no extra thread. A parked fiber is now scanned from its saved SP
+      once every thread that can run a fiber has one; SYSMON and the idle
+      collector no longer count
+      (`bench/log/linux/2026-09-27-parked-fiber-sp/`). EC4 gained the same:
+      2.53 → 0.81 ms. The RSS half remains, with `GCRY_PARALLEL_DORMANT=1` as
+      its remedy.
       gcry calls a program multi-mutator when Crystal's list has more than two
       threads, so one thread of its own (an `Isolated` context, a driver's
       `Thread.new`) moves a default-context program onto the multi-mutator root

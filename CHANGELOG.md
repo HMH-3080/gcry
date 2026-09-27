@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Multi-threaded pauses are much shorter: a parked fiber is scanned from
+  its saved stack pointer.** With more than one thread allocating, every
+  parked fiber used to be scanned from 256 KiB below its saved `stack_top`,
+  in case it was mid-switch. The check that rules that out needs an SP for
+  every thread. SYSMON and the idle collector never have one, because they
+  are never signalled, so the check never passed. They also never run a
+  user fiber. They no longer count against the check, and a fiber that is
+  not running is now scanned from its saved `stack_top`, as a
+  single-threaded program's always was. `swapcontext` writes `stack_top`
+  before it marks a fiber parked, and marks the target running before
+  switching stacks, so a parked fiber has no frame below that point.
+  Kemal `/json`, pause p50, paired:
+  - EC4: **2.53 → 0.81 ms**, lower in 12 of 12 rounds, throughput within
+    noise.
+  - EC1 with one extra thread: **2.00 → 0.59 ms** (0.50 without the thread),
+    lower in 8 of 8 rounds.
+
+  `GCRY_PARKED_FIBER_SP=0` restores the old scan
+  (`bench/log/linux/2026-09-27-parked-fiber-sp/`).
+
 ### Fixed
 
 - **macOS: released pages now leave the footprint.** Every release on
