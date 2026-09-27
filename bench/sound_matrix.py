@@ -59,6 +59,18 @@ def rss_kib(pid):
                                   capture_output=True, text=True).stdout.strip())
 
 
+def footprint_kib(pid):
+    """macOS `phys_footprint` via `vmmap -summary`, which `ps` RSS is not:
+    reusable pages stay in RSS until the kernel takes them. None elsewhere."""
+    if sys.platform != "darwin":
+        return None
+    out = subprocess.run(["vmmap", "-summary", str(pid)], capture_output=True, text=True).stdout
+    m = re.search(r"Physical footprint:\s+([\d.]+)([KMG])", out)
+    if not m:
+        return None
+    return int(float(m.group(1)) * {"K": 1, "M": 1024, "G": 1024 * 1024}[m.group(2)])
+
+
 def one(binary, env):
     p = subprocess.Popen([binary], env=dict(os.environ, PORT=a.port, **env),
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -81,7 +93,8 @@ def one(binary, env):
         for _ in range(2):
             urllib.request.urlopen(URL + "/gc-collect").read()
         time.sleep(0.3)
-        return {"rps": rps, "pause_ms": pause_ms, "rss_kib": rss_kib(p.pid), "soundness": label}
+        return {"rps": rps, "pause_ms": pause_ms, "rss_kib": rss_kib(p.pid),
+                "footprint_kib": footprint_kib(p.pid), "soundness": label}
     finally:
         p.kill()
         p.wait()
@@ -101,21 +114,28 @@ for r in range(a.rounds):
     print(f"round {r + 1}/{a.rounds}", file=sys.stderr, flush=True)
 
 med = statistics.median
-print("| shape | profile | req/s | pause p50 ms | post-GC RSS MB |")
-print("|---|---|---:|---:|---:|")
+has_fp = all(x["footprint_kib"] for v in res.values() for x in v)
+fp_head, fp_rule = (" post-GC footprint MB |", "---:|") if has_fp else ("", "")
+print(f"| shape | profile | req/s | pause p50 ms | post-GC RSS MB |{fp_head}")
+print(f"|---|---|---:|---:|---:|{fp_rule}")
 for sh in SHAPES:
     for pr in PROFILES:
         v = res[(sh, pr)]
+        fp = f" {med(x['footprint_kib'] for x in v) / 1024:.1f} |" if has_fp else ""
         print(f"| {sh} | {pr} | {med(x['rps'] for x in v):.0f} | {med(x['pause_ms'] for x in v):.3f} "
-              f"| {med(x['rss_kib'] for x in v) / 1024:.1f} |")
+              f"| {med(x['rss_kib'] for x in v) / 1024:.1f} |{fp}")
 print()
-print(f"| shape | {prof_name}/tuned req/s per round: median (min–max) | pause | RSS |")
-print("|---|---|---:|---:|")
+print(f"| shape | {prof_name}/tuned req/s per round: median (min–max) | pause | RSS |{' footprint |' if has_fp else ''}")
+print(f"|---|---|---:|---:|{fp_rule}")
 for sh in SHAPES:
     t, s = res[(sh, "tuned")], res[(sh, prof_name)]
     thr = [y["rps"] / x["rps"] for x, y in zip(t, s)]
     pz = [y["pause_ms"] / x["pause_ms"] for x, y in zip(t, s) if x["pause_ms"] > 0]
     rs = [y["rss_kib"] / x["rss_kib"] for x, y in zip(t, s)]
-    print(f"| {sh} | {med(thr):.3f} ({min(thr):.3f}–{max(thr):.3f}) | {med(pz):.2f}× | {med(rs):.2f}× |")
+    fp = ""
+    if has_fp:
+        fs = [y["footprint_kib"] / x["footprint_kib"] for x, y in zip(t, s)]
+        fp = f" {med(fs):.2f}× |"
+    print(f"| {sh} | {med(thr):.3f} ({min(thr):.3f}–{max(thr):.3f}) | {med(pz):.2f}× | {med(rs):.2f}× |{fp}")
 if a.json:
     json.dump({f"{sh}/{pr}": v for (sh, pr), v in res.items()}, open(a.json, "w"), indent=1)
