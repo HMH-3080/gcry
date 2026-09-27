@@ -1,0 +1,14 @@
+Process-GC STW + concurrent mutation property test
+  seed=20043 iterations=200 workers=[2, 4]
+  stop_the_world=true
+  bitmap_alloc=false headers=true
+  mode: shipped
+  tlab_enabled=true (requested=true)
+  nursery_enabled=false (requested=false)
+
+  STW-MT workers=2 iterations=200 seed=20043
+
+=== Summary ===
+RESULT: FAIL — seed=20043 (re-run with --seed=20043)
+  ERROR: after collect #156: root 8 cookie broken
+  ERROR: after collect #156: root 9 cookie broken

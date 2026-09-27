@@ -1,0 +1,34 @@
+Process-GC STW + concurrent mutation property test
+  seed=170147 iterations=200 workers=[2, 4]
+  stop_the_world=true
+  bitmap_alloc=false headers=true
+  mode: shipped
+  tlab_enabled=true (requested=true)
+  nursery_enabled=false (requested=false)
+
+  STW-MT workers=2 iterations=200 seed=170147
+PROBE: cycle after flush, class 9 old; epoch now 3
+  node 7ce47344d6e0 prev=[k1 s3 e2 STW coll] last=[k5 s0 e2 STW coll]
+  node 7ce47344d610 prev=[k1 s3 e2 STW coll] last=[k5 s0 e2 STW coll]
+  node 7ce47344d540 prev=[k1 s3 e2 STW coll] last=[k5 s0 e2 STW coll]
+  node 7ce47344d470 prev=[k1 s3 e2 STW coll] last=[k5 s0 e2 STW coll]
+  node 7ce47344d3a0 prev=[k1 s3 e2 STW coll] last=[k5 s0 e2 STW coll]
+  node 7ce47344d2d0 prev=[k1 s3 e2 STW coll] last=[k5 s0 e2 STW coll]
+  node 7ce47344d200 prev=[k1 s3 e2 STW coll] last=[k5 s0 e2 STW coll]
+  node 7ce47344d130 prev=[k1 s3 e2 STW coll] last=[k5 s0 e2 STW coll]
+  node 7ce47344d060 prev=[k1 s3 e2 STW coll] last=[k5 s0 e2 STW coll]
+  node 7ce47344cf90 prev=[k1 s3 e2 STW coll] last=[k5 s0 e2 STW coll]
+  node 7ce47344cec0 prev=[k5 s0 e2 STW coll] last=[k3 s0 e3 STW coll]
+  node 7ce47344ef40 prev=[k1 s3 e2 STW coll] last=[k5 s0 e2 STW coll]
+  node 7ce47344ee70 prev=[k1 s3 e2 STW coll] last=[k5 s0 e2 STW coll]
+  node 7ce47344eda0 prev=[k1 s3 e2 STW coll] last=[k5 s0 e2 STW coll]
+  node 7ce47344ecd0 prev=[k1 s3 e2 STW coll] last=[k5 s0 e2 STW coll]
+  node 7ce47344ec00 prev=[k1 s3 e2 STW coll] last=[k5 s0 e2 STW coll]
+  node 7ce47344eb30 prev=[k1 s3 e2 STW coll] last=[k5 s0 e2 STW coll]
+  node 7ce47344ea60 prev=[k1 s3 e2 STW coll] last=[k5 s0 e2 STW coll]
+  node 7ce47344e990 prev=[k1 s3 e2 STW coll] last=[k5 s0 e2 STW coll]
+  node 7ce47344e8c0 prev=[k1 s3 e2 STW coll] last=[k5 s0 e2 STW coll]
+  node 7ce47344e7f0 prev=[k1 s3 e2 STW coll] last=[k5 s0 e2 STW coll]
+  node 7ce47344e720 prev=[k1 s3 e2 STW coll] last=[k5 s0 e2 STW coll]
+  node 7ce47344e650 prev=[k1 s3 e2 STW coll] last=[k5 s0 e2 STW coll]
+  node 7ce47344e580 prev=[k1 s3 e2 STW coll] last=[k5 s0 e2 STW coll]
