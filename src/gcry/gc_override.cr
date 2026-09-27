@@ -501,7 +501,7 @@ module GC
 
     if retain = env_u64("GCRY_EMPTY_CHUNK_RETAIN")
       heap.empty_chunk_retain = retain
-    elsif {{ !flag?(:darwin) }} && heap.parallel_empty_chunk_dormant && heap.empty_chunk_retain < PARALLEL_DORMANT_DEFAULT_RETAIN
+    elsif heap.parallel_empty_chunk_dormant && heap.empty_chunk_retain < PARALLEL_DORMANT_DEFAULT_RETAIN
       # The dormant opt-ins release empties *within* this budget, and the
       # process default is 0 on Linux (512 KiB on Darwin) since 2026-08-03,
       # which left `GCRY_PARALLEL_DORMANT=1` — the documented Parallel RSS
@@ -511,10 +511,12 @@ module GC
       # One Parallel threshold is what a cycle can reuse; an explicit
       # `GCRY_EMPTY_CHUNK_RETAIN` still wins.
       #
-      # Not on Darwin: its page release is `MADV_FREE`, which leaves RSS and
-      # footprint alone until memory pressure, so a larger budget there only
-      # turns empties that would have been munmapped into dormant ones that
-      # stay resident — measured +69% post-GC RSS at EC1 on the macOS runner.
+      # Darwin too since 2026-09-27, when its release became
+      # `MADV_FREE_REUSABLE`. Before that (`MADV_FREE`) the budget only turned
+      # empties that would have been munmapped into dormant ones that stayed
+      # in the footprint. Measured on the macOS runner, footprint after
+      # `GC.collect` ÷ without the knob: EC1 1.04×, EC1 + a thread 0.50×,
+      # EC4 0.36×. `ps` RSS reads EC1 1.65× because it counts reusable pages.
       heap.empty_chunk_retain = PARALLEL_DORMANT_DEFAULT_RETAIN
     end
     if warm = env_u64("GCRY_EMPTY_CHUNK_WARM_RETAIN")

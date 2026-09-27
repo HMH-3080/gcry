@@ -24,6 +24,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`GCRY_PAGE_DONTNEED=1`) stays on `MADV_FREE`, because its pages are reused
   by any allocation that lands in them.
 
+  With that, `GCRY_PARALLEL_DORMANT=1` now brings its 64 MiB budget on macOS
+  as well; 0.28.2 had limited it to Linux. Paired on the macOS runner over 10
+  rounds, post-GC footprint against the default was: EC1 1.04×, EC1 plus one
+  thread 0.50×, EC4 0.36×.
+
 ## [0.28.2] - 2026-09-27
 
 ### Added

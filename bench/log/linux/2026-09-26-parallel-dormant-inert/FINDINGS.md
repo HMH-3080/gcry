@@ -130,3 +130,22 @@ budget:
 footprint is the number to read. The gate asserts both arms: at least half
 the dormant bytes leave the footprint with the default release, and fewer
 than half with `MADV_FREE`.
+
+### The budget on macOS, with the reusable release
+
+`bench/sound_matrix.py --profile dormant64:GCRY_PARALLEL_DORMANT=1,GCRY_EMPTY_CHUNK_RETAIN=67108864`,
+10 rounds on the CI runners (run `36327145095`, `dormant64-matrix-*.json`),
+knob ÷ tuned. macOS now reports the footprint beside `ps` RSS:
+
+| shape | macOS req/s | macOS `ps` RSS | macOS footprint | Linux req/s | Linux RSS |
+|---|---|---:|---:|---|---:|
+| EC1 | 0.986 | 1.65× | **1.04×** | 0.985 | 1.04× |
+| EC1 + one thread | 0.996 | 0.99× | **0.50×** | 1.020 | 0.49× |
+| EC4 | 0.894 (0.547–1.523) | 1.02× | **0.36×** | 0.970 | 0.25× |
+
+The +69% at EC1 that kept the budget Linux-only was `ps` RSS, which counts
+reusable pages. The footprint shows no such cost, and past the boundary it
+now roughly halves or better, as on Linux. So the opt-in's budget applies on
+Darwin too. The throughput cost at EC4 is the one measured on Linux under
+heavy load (0.914× at `wrk -c100`), and it is why the knob stays opt-in on
+both platforms.
