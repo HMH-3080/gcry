@@ -27,7 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     lower in 8 of 8 rounds.
 
   `GCRY_PARKED_FIBER_SP=0` restores the old scan
-  (`bench/log/linux/2026-09-27-parked-fiber-sp/`).
+  (`bench/log/linux/2026-09-27-parked-fiber-sp/`). `GCRY_SOUND=1` and an
+  explicit `GCRY_STW_STACK_LAG=0` still scan every parked fiber whole.
 
 ### Fixed
 
