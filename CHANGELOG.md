@@ -7,28 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed
+## [0.29.0] - 2026-09-28
 
-- **Multi-threaded pauses are much shorter: a parked fiber is scanned from
-  its saved stack pointer.** With more than one thread allocating, every
-  parked fiber used to be scanned from 256 KiB below its saved `stack_top`,
-  in case it was mid-switch. The check that rules that out needs an SP for
-  every thread. SYSMON and the idle collector never have one, because they
-  are never signalled, so the check never passed. They also never run a
-  user fiber. They no longer count against the check, and a fiber that is
-  not running is now scanned from its saved `stack_top`, as a
-  single-threaded program's always was. `swapcontext` writes `stack_top`
-  before it marks a fiber parked, and marks the target running before
-  switching stacks, so a parked fiber has no frame below that point.
-  Kemal `/json`, pause p50, paired:
-  - EC4: **2.53 → 0.81 ms**, lower in 12 of 12 rounds, throughput within
-    noise.
-  - EC1 with one extra thread: **2.00 → 0.59 ms** (0.50 without the thread),
-    lower in 8 of 8 rounds.
+### Added
 
-  `GCRY_PARKED_FIBER_SP=0` restores the old scan
-  (`bench/log/linux/2026-09-27-parked-fiber-sp/`). `GCRY_SOUND=1` and an
-  explicit `GCRY_STW_STACK_LAG=0` still scan every parked fiber whole.
+- **`bench/sound_matrix.py` reports the macOS footprint** (`vmmap -summary`)
+  beside `ps` RSS. On macOS the footprint is the number to read, because `ps`
+  keeps counting reusable pages.
 
 ### Fixed
 
@@ -51,6 +36,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   as well; 0.28.2 had limited it to Linux. Paired on the macOS runner over 10
   rounds, post-GC footprint against the default was: EC1 1.04×, EC1 plus one
   thread 0.50×, EC4 0.36×.
+
+### Changed
+
+- **Multi-threaded pauses are much shorter: a parked fiber is scanned from
+  its saved stack pointer.** With more than one thread allocating, every
+  parked fiber used to be scanned from 256 KiB below its saved `stack_top`,
+  in case it was mid-switch. The check that rules that out needs an SP for
+  every thread. SYSMON and the idle collector never have one, because they
+  are never signalled, so the check never passed. They also never run a
+  user fiber. They no longer count against the check, and a fiber that is
+  not running is now scanned from its saved `stack_top`, as a
+  single-threaded program's always was. `swapcontext` writes `stack_top`
+  before it marks a fiber parked, and marks the target running before
+  switching stacks, so a parked fiber has no frame below that point.
+  Kemal `/json`, pause p50, paired:
+  - EC4: **2.53 → 0.81 ms**, lower in 12 of 12 rounds, throughput within
+    noise.
+  - EC1 with one extra thread: **2.00 → 0.59 ms** (0.50 without the thread),
+    lower in 8 of 8 rounds.
+
+  `GCRY_PARKED_FIBER_SP=0` restores the old scan
+  (`bench/log/linux/2026-09-27-parked-fiber-sp/`). `GCRY_SOUND=1` and an
+  explicit `GCRY_STW_STACK_LAG=0` still scan every parked fiber whole.
 
 ## [0.28.2] - 2026-09-27
 
@@ -5678,7 +5686,8 @@ now measured (not estimated).
 - Concurrent mark / compacting / precise GC need compiler cooperation.
 - Optional upstream `-Dgc_gcry` backend remains out of scope (shard override is enough).
 
-[Unreleased]: https://github.com/sdogruyol/gcry/compare/v0.28.2...HEAD
+[Unreleased]: https://github.com/sdogruyol/gcry/compare/v0.29.0...HEAD
+[0.29.0]: https://github.com/sdogruyol/gcry/compare/v0.28.2...v0.29.0
 [0.28.2]: https://github.com/sdogruyol/gcry/compare/v0.28.1...v0.28.2
 [0.28.1]: https://github.com/sdogruyol/gcry/compare/v0.28.0...v0.28.1
 [0.28.0]: https://github.com/sdogruyol/gcry/compare/v0.27.2...v0.28.0

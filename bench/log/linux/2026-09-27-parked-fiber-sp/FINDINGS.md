@@ -94,5 +94,8 @@ in two thirds of them), 152 `thread_storm` and 152 `pattern_fuzz+diag`.
 correctness gate) on `986e8c0`: **40/40, soft 0, hard 0**. With
 `GCRY_POISON_FREED=1` it was **40/40, soft 0, hard 0** as well.
 
-CI soak, 3 × 5 h at `--workers=4` so that every collection is multi-mutator
-(run `36341297555`): PENDING.
+CI soak, 3 × 5 h at `--workers=4` (run `36341297555`, `986e8c0`): **all three
+arms PASSED**, about 17 900 collections each. Each arm ended with
+`ec_parallelism=4 os_threads=6`, past the multi-mutator boundary. [INFERENCE]
+So the parked-SP scan ran on those collections. The soak does not print the
+counter.
