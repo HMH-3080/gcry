@@ -7,7 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`bench/sound_matrix.py --profile NAME:KEY=VAL`** compares any
+  configuration against tuned on the same shapes. Dispatch input
+  `matrix_profile` defaults to `sound:GCRY_SOUND=1`.
+  `dormant:GCRY_PARALLEL_DORMANT=1` gave the paired cost below.
+
 ### Fixed
+
+- **`GCRY_PARALLEL_DORMANT=1` works again.** It is the documented RSS opt-in
+  for multi-mutator programs, and it releases empty chunks within
+  `empty_chunk_retain`. On 2026-08-03 (0.18.0) the Linux process default for
+  that budget became 0. From then on the opt-in, and `_ALL` too, did nothing:
+  Kemal EC4 post-GC RSS was 83.4 MB with it against 83.7 without.
+
+  On Linux either knob now brings a 64 MiB budget unless
+  `GCRY_EMPTY_CHUNK_RETAIN` is set. Paired on the CI runner over 10 rounds at
+  EC4, it cost nothing measurable: throughput 1.02×, pause 1.01×, RSS 0.25×.
+  - EC4: 83.8 → **19.7 MB**.
+  - An EC1 program with one extra thread: 25.1 → 15.6 MB.
+
+  macOS keeps its 512 KiB default; see the page-release item in the ROADMAP.
+  Nothing ran either knob before. `make parallel-dormant` does now, on Linux
+  and macOS, with `GCRY_EMPTY_CHUNK_RETAIN=0` as its red arm
+  (`bench/log/linux/2026-09-26-parallel-dormant-inert/`).
+
+- **Reviving a dormant chunk could hand out blocks the collector was about to
+  zero.** The header allocator's revival cleared the chunk's DORMANT flag
+  first and installed its freelist after. A thread suspended in between left
+  a chunk the stop-the-world sweep read as free and not dormant, so the sweep
+  made it dormant again. The revival then installed its chain anyway, and the
+  post-STW release zeroed objects already allocated from it (`root N cookie
+  broken`). The flag is now the last thing a revival changes.
+
+  This needs `-Dgcry_block_headers`, `GCRY_BITMAP_ALLOC=0` and dormant
+  chunks. On Linux, dormant chunks come from the opt-in above. On macOS they
+  exist by default. The default bitmap allocator pins the same transition and
+  was not affected. `make chunk-search-race` schedules a sweep at that moment
+  (`handoff-header-dormant`), and on the old code it fails every run.
 
 - **`GCRY_TLAB=1` never gave a thread its own buffer, and no collection ever
   emptied one.** This affects TLAB only, which is unsupported and needs a
@@ -17,70 +55,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Every thread shared slot 0, and every allocation's slot lookup took the
     allocator lock.
   - No TLAB chain was ever handed back at a stop. The sweep read those blocks
-    as free while the TLAB kept handing them out, relinked them onto the class
-    list, and, with dormant chunks, released their pages under live objects:
-    `root N cookie broken` in 5% of loaded `stw_mt_property_test_hdr --tlab`
-    runs with `GCRY_PARALLEL_DORMANT=1`.
+    as free while the TLAB kept handing them out, and it relinked them onto
+    the class list. With dormant chunks, it also released their pages under
+    live objects.
 
-  The writes now go through a pointer. A thread past `MAX_TLABS` shares a slot
-  by key rather than failing. Two things this made reachable are also fixed:
-  - The collector now takes every slot lock before it stops the world, so no
-    thread is stopped halfway through a TLAB allocation (`GCRY_TLAB_QUIESCE=0`
-    restores the old order for A/B).
-  - The collector's own allocations inside a stopped world skip its TLAB. A
-    refill there put blocks in the TLAB that the sweep then put back on the
-    class list, and the next flush closed the list into a cycle.
+  Side by side at the same load, the headered TLAB lane failed 7 of 300 before
+  the fix and 0 of 300 after. The `GCRY_ALLOC_BATCH` table had the same
+  writes. The writes now go through a pointer, and a thread past `MAX_TLABS`
+  shares a slot by key rather than failing. Three hazards the dead flush had
+  hidden are fixed with it:
+  - The collector takes every slot lock before it stops the world, so no
+    thread is stopped halfway through a TLAB allocation.
+    `GCRY_TLAB_QUIESCE=0` restores the old order for A/B.
+  - A refill that a collection interrupts, between taking its batch off the
+    class list and installing it, sees the TLAB epoch move. It takes the batch
+    back, drops the list for the next sweep to rebuild, and starts over.
+  - Nothing uses a TLAB while the world is stopped. That covers the collector
+    and a thread the stop missed in its birth window. A refill there sat in the
+    TLAB while the sweep relinked the same blocks, and the next flush closed
+    the class list into a cycle.
 
-  `make chunk-search-race` gained `tlab-slots` (per-thread slots, emptied by
-  a flush), which fails on the old code every run.
-
-- **Reviving a dormant chunk could hand out blocks the collector was about to
-  zero.** The header allocator's revival cleared the chunk's DORMANT flag
-  first and installed its freelist after. A thread suspended in between left
-  a chunk the stop-the-world sweep read as free and not dormant, so the sweep
-  made it dormant again. The revival then installed its chain anyway, and the
-  post-STW release zeroed objects already allocated from it (`root N cookie
-  broken`). It needs `-Dgcry_block_headers`, `GCRY_BITMAP_ALLOC=0` and dormant
-  chunks. With TLAB it ran 4 of 79 stress-campaign runs and about 1 in 170
-  locally once the hang below was fixed. The flag is now the last thing a
-  revival changes. `make chunk-search-race` schedules a sweep at that moment
-  (`handoff-header-dormant`), and on the old code it fails every run.
-- **A TLAB refill stopped by a collection could install a batch the collector
-  had already reclaimed.** The refill takes a batch off the class list under
-  the alloc lock and then installs it in the thread's TLAB. The stopped world
-  takes no allocator lock. A collection in that gap saw blocks on no list and
-  in no TLAB, so it could make their chunk dormant or rebuild the class list
-  around them. The refill then installed the batch anyway, and wrote a stale
-  chain over the rebuilt list. A probe caught the gap in 26 of 600
-  headered-TLAB runs. The refill now checks the TLAB epoch, which every
-  collection bumps, before it lets go of the lock. If the epoch moved, it takes
-  the batch back, drops the class list for the next sweep to rebuild, and
-  starts over. `make chunk-search-race` now also builds with
-  `-Dgcry_block_headers` and runs a collection in that gap
-  (`handoff-tlab-refill`), which fails on the old code every run.
+  `make chunk-search-race` now also builds with `-Dgcry_block_headers` and
+  runs `tlab-slots` and `handoff-tlab-refill`. Each fails on the code before
+  its fix every run (`bench/log/linux/2026-09-27-dormant-revive-race/`).
 
 - **A headered build with TLAB and `GCRY_PARALLEL_DORMANT` hung.** The TLAB
   refill holds the alloc lock, and reviving a dormant chunk from there took
-  that spin lock again, which spins forever. Since 0.24.1; it needs
-  `-Dgcry_block_headers`, `GCRY_BITMAP_ALLOC=0`, TLAB and a dormant chunk, and
-  on Linux the last became reachable only with the dormant fix below. The
-  stress campaign run with the opt-in on caught it at once: 26 of 26 runs of
-  the headered TLAB lanes hung, and 100 iterations of `stw_mt_property_test`
-  hang 3 of 3 seeds. The revival now takes the lock only when its caller does
-  not hold it, and both CI TLAB steps run a dormant arm under a timeout.
-
-- **`GCRY_PARALLEL_DORMANT=1` works again.** It is the documented RSS opt-in
-  for multi-mutator programs, and it releases empty chunks within
-  `empty_chunk_retain`. On 2026-08-03 (0.18.0) the Linux process default
-  for that budget became 0, and from then the opt-in, `_ALL` too, did nothing: Kemal
-  EC4 post-GC RSS 83.4 MB with it against 83.7 without. On Linux either knob
-  now brings a 64 MiB budget unless `GCRY_EMPTY_CHUNK_RETAIN` is set (paired
-  on the CI runner, 10 rounds: throughput 1.02×, pause 1.01×, RSS 0.25× at
-  EC4; macOS keeps its 512 KiB default, see the page-release item): EC4
-  83.8 → **19.7 MB**, and an EC1 program with one extra thread 25.1 →
-  15.6 MB. Nothing ran either knob before; `make parallel-dormant` does now,
-  on Linux and macOS, with `GCRY_EMPTY_CHUNK_RETAIN=0` as its red arm
-  (`bench/log/linux/2026-09-26-parallel-dormant-inert/`).
+  that spin lock again, which spins forever. This dates from 0.24.1. It needs
+  `-Dgcry_block_headers`, `GCRY_BITMAP_ALLOC=0`, TLAB and a dormant chunk,
+  and on Linux the dormant chunk became reachable only with the dormant fix
+  above. The stress campaign caught it at once, with 26 of 26 runs of the
+  headered TLAB lanes hung. The revival now takes the lock only when its caller
+  does not hold it. Both CI TLAB steps run a dormant arm under a timeout, and
+  on the old code it hangs 3 of 3 seeds.
 
 ## [0.28.1] - 2026-09-26
 
