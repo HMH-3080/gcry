@@ -2244,7 +2244,7 @@ kept finding the rest.
       `epoll_wait`, no collection in progress. `ping.cr` — the harness's
       channel traffic and nothing else — deadlocks the same way under Boehm
       (3 of 152) and with no GC calls at all (3 of 74). Samplers now classify
-      it and do not count it; an upstream report is drafted, not filed.
+      it and do not count it; filed upstream as crystal-lang/crystal#17486 (2026-09-27).
       `bench/log/linux/2026-09-25-parallel-scheduler-deadlock/FINDINGS.md`
       The overnight campaign on 0.27.2 (4 448 runs, 50 lane-hours, 0 failures)
       stalled 3 times, all this deadlock by capture.

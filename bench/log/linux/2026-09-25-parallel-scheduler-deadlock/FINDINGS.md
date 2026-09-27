@@ -105,7 +105,12 @@ change how often threads are preempted inside the window, and gcry's rate
   upstream deadlock (exit 3), so the samplers report it without counting it as
   a gcry failure.
 
-## Draft upstream report (not filed)
+## Upstream report
+
+Filed 2026-09-27 as
+[crystal-lang/crystal#17486](https://github.com/crystal-lang/crystal/issues/17486),
+a shorter version of the draft below with the same reproducer, numbers and
+patch.
 
 > **Parallel execution context: two schedulers can deadlock resuming each
 > other's current fiber**

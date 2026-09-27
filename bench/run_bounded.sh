@@ -9,7 +9,8 @@
 # stall is the known Crystal 1.21 Parallel-scheduler deadlock: two or more
 # threads spinning in `Scheduler#resume` (`parallel/scheduler.cr:97`) and no
 # collector frame anywhere. It reproduces under Boehm with no GC calls at all
-# (`bench/log/linux/2026-09-25-parallel-scheduler-deadlock/`), so a sampler
+# (`bench/log/linux/2026-09-25-parallel-scheduler-deadlock/`, upstream
+# crystal-lang/crystal#17486), so a sampler
 # reports it without counting it against gcry.
 #
 # "Still running" is read from /proc, not `kill -0`: a child that has exited

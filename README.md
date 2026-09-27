@@ -325,6 +325,7 @@ threads spinning in `parallel/scheduler.cr` and no collector frame, that is the
 likely cause. Reproducer, measurement and an upstream patch (72 stalls in 2500
 runs → 0):
 [`bench/log/linux/2026-09-25-parallel-scheduler-deadlock/`](bench/log/linux/2026-09-25-parallel-scheduler-deadlock/FINDINGS.md).
+Upstream: [crystal-lang/crystal#17486](https://github.com/crystal-lang/crystal/issues/17486).
 
 ---
 
