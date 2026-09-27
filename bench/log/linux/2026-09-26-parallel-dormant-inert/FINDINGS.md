@@ -68,3 +68,25 @@ page-release item). The 64 MiB budget turned empties the EC1 path would have
 munmapped into dormant ones that stayed resident. So the budget raise is
 Linux-only (`ecb4bc4`), and on Darwin `make parallel-dormant` reports without
 asserting.
+
+## The worst case for the budget: tree churn at EC4 (2026-09-27)
+
+Kemal barely touches the chunks the opt-in releases. A binary-trees churn does
+the opposite: every cycle empties chunks and needs them straight back, so
+every revival faults its pages in again. `probe/mt_trees.cr` runs four
+workers, each building and dropping depth-16 trees with a long-lived tree
+kept per worker. `probe/paired.py` runs 12 rounds, each executing off, on
+and a second off in rotated order. Measured on the local host with nothing
+else running, `--release`, code at `16c1f72`:
+
+| shape | on/off time | off2/off (null) | post-GC RSS on/off | peak RSS on/off |
+|---|---|---|---:|---:|
+| depth 16 × 40 | 1.013 (0.951–1.099) | 1.007 (0.926–1.101) | **0.26×** | 0.93× |
+| depth 14 × 160 | 1.006 (0.955–1.052) | 1.004 (0.929–1.045) | **0.41×** | 0.94× |
+
+The time cost is inside what the null arm moves: 35.2 → 8.9 MB and
+15.6 → 6.4 MB after `GC.collect`, for no measurable time. Together with the
+Kemal matrix above (1.02× throughput, 1.01× pause, 0.25× RSS on the CI
+runner), nothing measured so far argues for keeping it opt-in on Linux. What
+is still missing before a default change: the soft-soak gate with it on, and
+the macOS side, which is the `MADV_FREE` item.
