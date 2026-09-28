@@ -355,6 +355,7 @@ end
 # ── Parent ───────────────────────────────────────────────────────────────────
 exe = Process.executable_path.not_nil!
 attempts = (ENV["DORMANT_FLUSH_RACE_ATTEMPTS"]?.try(&.to_i?) || 6)
+CAPTURE_DIR = ENV["DORMANT_FLUSH_CAPTURE"]?
 
 puts "=== post-STW flush walk vs. mutator unmap ==="
 puts "#{WORKERS} workers × #{ROUNDS} rounds of #{PAYLOAD} B, one collector, #{BALLAST} ballast objects"
@@ -373,6 +374,14 @@ def run(exe : String, env, attempts : Int32) : {Int32, Int32, String?}
     unless result.ok
       bad += 1
       hung += 1 if result.timed_out
+      # `DORMANT_FLUSH_CAPTURE=<dir>`: keep what `stall_capture.sh` saw of a
+      # hung child — thread states and gdb backtraces, thousands of lines —
+      # in a file of its own, and name it here.
+      if (dir = CAPTURE_DIR) && (capture = result.capture)
+        path = File.join(dir, "dormant_flush_hang_#{Process.pid}_#{Time.utc.to_unix_ms}.txt")
+        File.write(path, result.output + "\n--- capture\n" + capture)
+        puts "  hung child captured: #{path}"
+      end
       # A worker that dies now re-raises at `join`, so the line worth quoting
       # is often Crystal's unhandled-exception header rather than a gcry
       # report or a SEGV.
@@ -398,6 +407,8 @@ end
 # raw pthread that costs nothing until a stop outlives its bound.
 base = {"GCRY_MOSTLY_EMPTY" => "1", "GCRY_UNMAP_GUARD" => "1", "GCRY_SEGV_REPORT" => "1",
         "GCRY_STW_WATCHDOG_MS" => "5000"}
+# A capture needs the child's consent to be traced (`GCRY_ANY_PTRACER`).
+base["GCRY_ANY_PTRACER"] = "1" if CAPTURE_DIR
 immediate = base.merge({"GCRY_TRIM_IMMEDIATE" => "1"})
 
 failures = [] of String
