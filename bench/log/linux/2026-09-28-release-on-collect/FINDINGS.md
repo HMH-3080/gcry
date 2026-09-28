@@ -72,3 +72,30 @@ Campaign lanes in the default configuration, built from `a7debe4` (the
 `stw_mt` lanes collect through `GC.collect`, so every one of their
 collections takes the new path): **2118 runs, 10.1 lane-hours, 0 failures, 0 timeouts**
 (`campaign-summary.md`).
+
+## Under load there is nothing idle to give back (a prototype, not shipped)
+
+Could ordinary majors take the RSS too, without the opt-in's page faults? I
+built a prototype, `GCRY_PARALLEL_IDLE_DORMANT=1`. An empty bitmap chunk seen
+empty at one major is marked `IDLE`. At the next major it goes dormant, unless
+a cursor has taken it in between (which clears the flag). A chunk the cycle
+reuses therefore never goes dormant.
+
+Soft-soak shape (EC4 Kemal, `wrk -c100 -d8 /json`), 16 rounds, three arms
+rotated (`paired_idle.py`, local host idle, prototype build):
+
+| arm | req/s | RSS at the end of the load |
+|---|---:|---:|
+| default | 299 021 | 84.3 MB |
+| idle-dormant prototype | 297 658 | 82.2 MB |
+| `GCRY_PARALLEL_DORMANT=1` | 233 477 | 58.9 MB |
+
+- The prototype: throughput ÷ default 1.015 (0.770–1.290), RSS 0.975.
+- The opt-in: 0.795 (0.643–0.944), RSS 0.699.
+
+The prototype costs nothing and gives nothing back. Under sustained load every
+empty chunk is taken again within a cycle, so none is idle. The 84 MB is the
+load's working set, and the opt-in shrinks it only by faulting it back in on
+every cycle. The place to give memory back is the one this change took: the
+collections that ask for it, and the idle collector once the load stops. The
+prototype was not committed.
