@@ -297,8 +297,8 @@ Prometheus `/metrics` exposes pause percentiles as gauges.
 | **Layout-precise scan** | Builtins + opt-in — fewer false keeps where registered |
 | **Headerless layout** | Compile default — no 16-byte per-object header; small blocks are carved back-to-back and size, kind, marks and occupancy live in the chunk. Kemal `/json` ~**113%** of Boehm at **1.07×** its peak RSS (Linux). `-Dgcry_block_headers` restores the header layout |
 | **Bitmap allocator** | Process default since 0.24.0 and forced on by the headerless layout — `occ` bitmaps, streaming `occ &= mark` sweep, per-thread cursors. `GCRY_BITMAP_ALLOC=0` is the freelist escape, on `-Dgcry_block_headers` only |
-| **Warm-chunk budget** | Emptied chunks stay mapped up to live × `GCRY_THRESHOLD_FACTOR`; an explicit `GC.collect` releases them, so post-collect RSS is the live footprint (~**1.2×** Boehm on Kemal) |
-| **macOS reclaim** | `mach_vm` punch-hole at host page size (16 KiB on Apple Silicon) |
+| **Warm-chunk budget** | Emptied chunks stay mapped up to live × `GCRY_THRESHOLD_FACTOR`; an explicit `GC.collect`, the idle collector and the collection before an `OutOfMemoryError` release them, so post-collect RSS is the live footprint (~**1.2×** Boehm on Kemal). Multi-threaded programs too since 0.30.0: Kemal at 4 workers reads 20 MB after `GC.collect`, 85 MB before |
+| **macOS reclaim** | `MADV_FREE_REUSABLE` at host page size (16 KiB on Apple Silicon), with `MADV_FREE_REUSE` before reuse, so released pages leave `phys_footprint` at once |
 | **Observability** | `Gcry.metrics`, `prometheus_text`, `Observability.json_stats` |
 | **Fork** | `pthread_atfork` reinit (default); see [POLICY](docs/POLICY.md) |
 

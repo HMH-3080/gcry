@@ -78,8 +78,9 @@ module GC
       heap.scrub_fibers_enabled = false
       heap.blacklist_enabled = true
       # Large cache on Darwin starts at 1 MiB (adaptive can grow to LARGE_CACHE_LIMIT
-      # if hit-rate warrants it). mach_vm reclaim already punches holes on free,
-      # so a fat cache is wasteful; 1 MiB floor avoids mmap churn for the common case.
+      # if hit-rate warrants it). A cached chunk stays resident and counts in
+      # `phys_footprint`, so a fat cache is wasteful; the 1 MiB floor avoids mmap
+      # churn for the common case.
       heap.large_cache_retain = 1048576_u64
     {% else %}
       # Linux: munmap empty size-class chunks (no dormant retain). Prior 16 MiB
