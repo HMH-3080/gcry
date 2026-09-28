@@ -1,0 +1,9 @@
+=== post-STW flush walk vs. mutator unmap ===
+4 workers × 10000 rounds of 40960 B, one collector, 40000 ballast objects
+
+  scheduled walk: queued=safe, immediate=faulted as required
+  queued (default):    2 of 6 failed
+  immediate (old):     6 of 6 failed
+     gcry: SIGSEGV at 0x7f96fa236024 — in a chunk gcry RELEASED — base 0x7f96fa236000, 45056 bytes, large-object release, at collection 120; the write is 36 bytes into it. Collections since: 0. First user word at release: 0x90000a000 (type_id 40960). Blocks still allocated at release: 1
+
+FAIL: the queued arm faulted 2 of 6 — a flush walk still meets a released chunk

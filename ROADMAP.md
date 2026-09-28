@@ -3676,6 +3676,14 @@ draw of `bench/log/macos/2026-08-10-053800/` — which is what makes it schedula
       which pagemap reports present, so the low-water skip was lost on it for
       good. Fixed: EC4 pause tuned **4.15 → 1.78 ms**, sound **6.60 → 2.15 ms**.
       `bench/log/linux/2026-09-26-sysmon-guard-scan/FINDINGS.md`
+- [ ] **A large chunk released with its block still allocated (`dormant_flush`,
+      2026-09-28).** Two consecutive faults in the first minutes of a
+      campaign on `2a46123`. A worker wrote into its own buffer after the
+      chunk was released, and the release saw the header USED. Not
+      reproduced since: 0 of 30 each, old and new binaries side by side under
+      full load; 0 of 344 in the two campaigns before. The next sighting
+      wants `GCRY_TRACE_LARGE=1`.
+      `bench/log/linux/2026-09-28-dormant-flush-large-release/FINDINGS.md`
 - [ ] **Attribute the residual per-rep spread** — open below. Until it closes it
       bounds every perf claim either release makes: ±2–3pp on phase timings, ±1pp
       on post-GC RSS, at 12 reps.

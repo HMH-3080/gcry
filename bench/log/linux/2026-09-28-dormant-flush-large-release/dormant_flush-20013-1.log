@@ -1,0 +1,11 @@
+=== post-STW flush walk vs. mutator unmap ===
+4 workers × 10000 rounds of 40960 B, one collector, 40000 ballast objects
+
+  scheduled walk: queued=FAILED, immediate=FAILED control
+  queued (default):    1 of 6 failed
+  immediate (old):     6 of 6 failed
+     gcry: GCRY_MOSTLY_EMPTY=1 is ignored on the headerless layout (the compile default): free-page release walks freelist chunks only, and a headerless heap has none. Rebuild with -Dgcry_block_headers and set GCRY_BITMAP_ALLOC=0 to run it, at a higher RSS than this layout reaches without it (docs/HARDENING.md)
+
+FAIL: the scheduled queued walk failed: 
+FAIL: the scheduled immediate walk did not fault at the held chunk: 
+FAIL: the queued arm faulted 1 of 6 — a flush walk still meets a released chunk
