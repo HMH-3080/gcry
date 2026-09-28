@@ -112,6 +112,28 @@ Filed 2026-09-27 as
 a shorter version of the draft below with the same reproducer, numbers and
 patch.
 
+**Upstream fix, verified 2026-09-28.** ysbaddaden confirmed the mechanism: a
+quick dequeue can pick up another scheduler's running fiber. He opened
+[crystal-lang/crystal#17491](https://github.com/crystal-lang/crystal/pull/17491),
+which splits `resume` into a bounded `try_resume`. When `reschedule` or the
+run loop cannot resume the fiber within
+`Thread::MAX_DELAY_ATTEMPTS_BEFORE_YIELD` tries, it re-enqueues it and
+switches to the main fiber.
+
+We applied the PR's diff (`pr-17491/pr.diff`) to a copy of the 1.21.0 stdlib
+and built the issue's reproducer twice with `--release`, once per stdlib
+(`CRYSTAL_PATH`). Four lanes ran the two binaries alternately
+(`pr-17491/lane.sh`) beside six busy loops, `ping 2 4000`, timeout 20 s:
+
+| stdlib | hung |
+|---|---:|
+| stock 1.21.0 | 17 / 1600 |
+| + #17491 | **0 / 1600** |
+
+At the stock rate, 0 of 1600 by chance has a probability of about 4 × 10⁻⁸.
+Once a Crystal release carries the fix, `bench/run_bounded.sh` should stop
+seeing exit 3.
+
 > **Parallel execution context: two schedulers can deadlock resuming each
 > other's current fiber**
 >
