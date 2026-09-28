@@ -127,7 +127,7 @@ the sweep. A mutator that takes one in between writes into a chunk the
 post-STW flush then releases. The TLAB configurations sweep inside the stop,
 so the window never opened there.
 
-The fix: a sweep that runs with the world going no longer makes a **header**
+The fix: a multi-mutator sweep that runs with the world going no longer makes a **header**
 chunk dormant. The chunk is kept mapped as before. Bitmap chunks have no
 freelist: the pool excludes dormant chunks and the cursor is pinned, and they
 passed this spec in every run.

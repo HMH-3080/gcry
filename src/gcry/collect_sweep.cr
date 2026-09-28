@@ -148,7 +148,10 @@ module Gcry
                     # the header allocator, 3 of 5 once `GC.collect` released
                     # by default (2026-09-28). A bitmap chunk has no freelist;
                     # its pool excludes dormant chunks and pins the cursor's.
-                    can_dormant = false if can_dormant && after_world && !bitmap_alloc_chunk?(chunk)
+                    # Single-mutator lazy sweeps hold the other threads off
+                    # (`@block_other_heap`), so only the multi-mutator one races.
+                    can_dormant = false if can_dormant && after_world && sweep_multi_mutator? &&
+                                           !bitmap_alloc_chunk?(chunk)
                     # One cycle's grace before an unmap. The warm budget is
                     # the threshold, and a cycle allocates the threshold, so
                     # the two sit on a knife edge: a class that runs one chunk
