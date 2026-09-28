@@ -418,8 +418,8 @@ jobs:
           # Until 2026-09-20 this built headerless, where nursery_enabled=
           # is a no-op and tlab_enabled= is refused, so minor_collect
           # returned immediately. Green requires -Dgcry_block_headers and
-          # GCRY_BITMAP_ALLOC=0; `--disabled` is GCRY_TLAB_MINOR_FREE_OLD=1,
-          # the pre-fix old FREE-claim. Dropping either reddens the gate.
+          # GCRY_BITMAP_ALLOC=0. A FREE node on the stack must stay FREE
+          # through a minor and a major.
           make nursery-tlab-smoke
 
       - name: Alloc pattern fuzz (20 phases, 1000 objects)

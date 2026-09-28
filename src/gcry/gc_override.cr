@@ -778,10 +778,6 @@ module GC
       {% end %}
       heap.tlab_enabled = true
     end
-    # Research only: restore the pre-fix FREE-claim during minor on an
-    # old TLAB node. `make nursery-tlab-smoke --disabled` is the red arm
-    # — the node becomes USED-unmarked. Dropping the assignment reddens it.
-    heap.tlab_minor_free_old = true if env_flag_one?("GCRY_TLAB_MINOR_FREE_OLD")
     heap.tlab_quiesce = false if env_flag_zero?("GCRY_TLAB_QUIESCE")
     # TLAB-off: batch-pop N size-class nodes under freelist lock (USED stash).
     # Amortizes lock vs lazy sweep. Clamped 1..64; ignored when TLAB is on.

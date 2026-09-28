@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **TLAB (unsupported): the marker no longer "claims" a FREE block that a
+  stack word points at.** On a TLAB heap it used to clear FREE and mark the
+  block's freelist chain, for a mutator stopped holding TLAB nodes. Since
+  0.29.0 no mutator can be: the collector takes every TLAB slot lock before
+  it stops the world, and a refill overtaken by a stop discards its batch.
+  In a probe with stale FREE words on the stack, the claim kept the heap at
+  1.9× its size (3.9 MB against 2.1 MB) and pushed `free_bytes` above the
+  heap size. `GCRY_TLAB_MINOR_FREE_OLD`, a research knob that reproduced an
+  old minor-collection bug in the claim, is gone with it
+  (`bench/log/linux/2026-09-28-tlab-claim-retired/`).
+
 ## [0.30.0] - 2026-09-28
 
 ### Fixed

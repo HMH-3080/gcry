@@ -56,19 +56,11 @@ module Gcry
     # applies `GCRY_TLAB=1` *after* the heap exists, so the pair was
     # reachable — and the allocation paths' own `!@bitmap_alloc` guards do not
     # cover what follows from it: `sweep_after_world?` returns false while
-    # TLAB is on, which silently moves a bitmap heap onto the in-STW sweep,
-    # and `mark_impl`'s `claim_free_tlab_block` becomes reachable for `occ=0`
-    # blocks whose `next_free` words are whatever the payload last held.
+    # TLAB is on, which silently moves a bitmap heap onto the in-STW sweep.
     def tlab_enabled=(value : Bool) : Bool
       return false if value && @bitmap_alloc
       @tlab_enabled = value
     end
-
-    # Research only — `GCRY_TLAB_MINOR_FREE_OLD=1`: restore the pre-fix
-    # FREE-claim during minor on an *old* node. Clearing FREE then skipping
-    # mark leaves USED-unmarked on the old freelist for scrub to drop.
-    # `make nursery-tlab-smoke --disabled` is the red arm.
-    property tlab_minor_free_old : Bool = false
 
     def tlab_refills : UInt64
       @tlab_refills

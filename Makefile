@@ -1427,13 +1427,12 @@ nursery-bitmap-marks: $(BIN)
 # minor_collect returned immediately — twenty rooted objects surviving
 # a no-op. Green requires -Dgcry_block_headers and GCRY_BITMAP_ALLOC=0
 # (TLAB cannot be turned on once bitmap chunks are mapped).
-# `--disabled` is GCRY_TLAB_MINOR_FREE_OLD=1, the pre-fix old FREE-claim:
-# an old FREE node on the stack becomes USED-unmarked. Dropping the
-# flag, the allocator knob, or the claim reddens the gate.
+# A FREE node on the stack must stay FREE through a minor and a major:
+# the marker no longer claims one (2026-09-28). Restoring the claim, or
+# dropping the allocator knob, reddens the gate.
 nursery-tlab-smoke: $(BIN)
 	$(CRYSTAL) build -Dgc_none -Dgcry_block_headers bench/nursery_tlab_smoke.cr -o $(BIN)/nursery_tlab_smoke --error-trace
 	GCRY_BITMAP_ALLOC=0 $(BIN)/nursery_tlab_smoke
-	GCRY_BITMAP_ALLOC=0 GCRY_TLAB_MINOR_FREE_OLD=1 $(BIN)/nursery_tlab_smoke --disabled
 
 # Buy samples of a defect that only happens on CI.
 #

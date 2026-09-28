@@ -3688,7 +3688,12 @@ draw of `bench/log/macos/2026-08-10-053800/` — which is what makes it schedula
 - [ ] **Attribute the residual per-rep spread** — open below. Until it closes it
       bounds every perf claim either release makes: ±2–3pp on phase timings, ±1pp
       on post-GC RSS, at 12 reps.
-- [ ] **Retire the marker's TLAB "on-stack freelist" claim.** `claim_free_tlab_block`
+- [x] **Retire the marker's TLAB "on-stack freelist" claim — done 2026-09-28.**
+      Removed with `GCRY_TLAB_MINOR_FREE_OLD`. Retention probe: heap 3.9 → 2.1 MB,
+      and `free_bytes` no longer exceeds the heap. Stress: 0/120 either side.
+      `make nursery-tlab-smoke` now requires a FREE node on the stack to stay FREE
+      through a major too. `bench/log/linux/2026-09-28-tlab-claim-retired/FINDINGS.md`
+      The original note: `claim_free_tlab_block`
       clears FREE on any block a stack root points into and marks its
       `next_free` chain. It assumed a mutator could be stopped holding FREE
       nodes out of its TLAB. Until 2026-09-27 that was true, because TLAB slots

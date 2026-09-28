@@ -1,9 +1,16 @@
 # Single-thread process GC: nursery + TLAB + minor_collect.
 #
-# The defect this exists for: FREE-claim during minor cleared FREE on an
-# *old* TLAB freelist node before the minor/old filter, leaving
-# USED-unmarked for scrub to drop — silent old-freelist corruption.
-# Skip that claim on old nodes; nursery nodes still claim.
+# A FREE block that a stack word happens to point at must stay FREE
+# through a minor and through a major. The marker used to "claim" such a
+# block: clear FREE and mark its `next_free` chain, on the theory that a
+# mutator could be stopped holding FREE nodes out of its TLAB. First the
+# claim was found to corrupt old freelists during a minor (it cleared FREE
+# and then skipped the mark, leaving USED-unmarked for scrub to drop), and
+# was skipped there. Since 2026-09-27 no mutator can be stopped holding
+# such a node at all: the collector takes every TLAB slot lock before it
+# stops the world, and a refill that a stop overtakes is discarded by its
+# epoch. The claim was removed on 2026-09-28, so a FREE node on the stack
+# is now a stale word like any other.
 #
 # Until 2026-09-20 CI built this headerless. `nursery_enabled=` is a
 # no-op there, `tlab_enabled=` is refused (the bitmap allocator is
@@ -14,24 +21,16 @@
 #
 #   crystal build -Dgc_none -Dgcry_block_headers bench/nursery_tlab_smoke.cr -o bin/nursery_tlab_smoke
 #   GCRY_BITMAP_ALLOC=0 bin/nursery_tlab_smoke
-#   GCRY_BITMAP_ALLOC=0 GCRY_TLAB_MINOR_FREE_OLD=1 bin/nursery_tlab_smoke --disabled
 #
 # Dropping `-Dgcry_block_headers` or `GCRY_BITMAP_ALLOC=0`: exit 64.
-# Dropping the knob from `--disabled`: exit 64.
+# Restoring the claim fails the major probe; restoring it for old nodes
+# during a minor fails the minor probe.
 
 require "../src/gcry"
 
 {% unless flag?(:gc_none) %}
   {% raise "nursery_tlab_smoke requires -Dgc_none (gcry as process GC)" %}
 {% end %}
-
-DISABLED = ARGV.includes?("--disabled")
-FREE_OLD = ENV["GCRY_TLAB_MINOR_FREE_OLD"]? == "1"
-
-if DISABLED && !FREE_OLD
-  STDERR.puts "--disabled needs GCRY_TLAB_MINOR_FREE_OLD=1: without the pre-fix claim this arm would require an old FREE node to become USED while the skip is still in place."
-  exit 64
-end
 
 heap = Gcry.default_heap
 
@@ -59,13 +58,8 @@ unless heap.tlab_enabled?
   STDERR.puts "tlab did not enable (bitmap_alloc still on, or headerless). Run with GCRY_BITMAP_ALLOC=0 on -Dgcry_block_headers."
   exit 64
 end
-if DISABLED && !heap.tlab_minor_free_old
-  STDERR.puts "--disabled needs GCRY_TLAB_MINOR_FREE_OLD=1: the property is off, so the minor/old skip is still running."
-  exit 64
-end
 
 puts "=== nursery + TLAB minor ==="
-puts DISABLED ? "mode: disabled (GCRY_TLAB_MINOR_FREE_OLD=1, the pre-fix old FREE-claim)" : "mode: shipped (minor skips old FREE-claim)"
 puts "bitmap_alloc=#{heap.bitmap_alloc?} tlab=#{heap.tlab_enabled?} nursery=#{heap.nursery_enabled} stw=#{heap.stop_the_world}"
 puts ""
 
@@ -89,23 +83,18 @@ end
   end
 end
 
-# Old FREE node on this frame during a minor. Shipped skips the claim;
-# `--disabled` clears FREE and leaves USED-unmarked.
-free_after = claim_probe(heap)
-puts "  claim_probe: still_free=#{free_after} minors=#{heap.minor_collections} tlab_hits=#{heap.tlab_hits} tlab_refills=#{heap.tlab_refills}"
-
-if DISABLED
-  if free_after
-    failures << "GCRY_TLAB_MINOR_FREE_OLD=1 but the old FREE node stayed FREE — the pre-fix claim did not run, so this arm cannot fail when the skip is restored"
-  else
-    puts "  PASS disabled claim: old FREE node is USED after minor"
-  end
+# A FREE node on this frame, through a minor and then through a major.
+minor_free, major_free = claim_probe(heap)
+puts "  claim_probe: free_after_minor=#{minor_free} free_after_major=#{major_free} minors=#{heap.minor_collections} tlab_hits=#{heap.tlab_hits} tlab_refills=#{heap.tlab_refills}"
+if minor_free
+  puts "  PASS minor left the FREE node on the stack FREE"
 else
-  unless free_after
-    failures << "shipped minor claimed an old FREE node (USED-unmarked) — the skip is gone"
-  else
-    puts "  PASS shipped claim: old FREE node stayed FREE"
-  end
+  failures << "a minor claimed an old FREE node on the stack (USED-unmarked, dropped by scrub)"
+end
+if major_free
+  puts "  PASS major left the FREE node on the stack FREE"
+else
+  failures << "a major claimed a FREE node on the stack: the TLAB on-stack-freelist claim is back"
 end
 
 # Minor actually collected: an unrooted nursery object must vanish. A
@@ -127,11 +116,7 @@ end
 
 if failures.empty?
   puts
-  if DISABLED
-    puts "ok — minor claims an old FREE node (USED-unmarked); unrooted nursery objects still vanish"
-  else
-    puts "ok — rooted TLAB objects survive minor, old FREE nodes stay FREE, unrooted nursery objects vanish"
-  end
+  puts "ok — rooted TLAB objects survive minor, FREE nodes on the stack stay FREE, unrooted nursery objects vanish"
   exit 0
 else
   puts
@@ -139,18 +124,18 @@ else
   exit 1
 end
 
-# Promote via a minor (majors do not clear NURSERY), free, then minor
-# again with `p` on this frame. Heap roots use a different source and
-# would skip the TLAB claim path, so they only keep it alive for the
-# promoting minor.
+# Promote via a minor (majors do not clear NURSERY), free, then collect
+# with `p` on this frame: a minor, then a major. Heap roots use a
+# different source than the stack, so they only keep the plant alive for
+# the promoting minor.
 @[NoInline]
-def claim_probe(heap : Gcry::Heap) : Bool
+def claim_probe(heap : Gcry::Heap) : {Bool, Bool}
   p = GC.malloc(64)
   heap.add_root(p)
   heap.minor_collect(scan_stack: false)
   heap.delete_root(p)
   if Gcry::BlockHeader.nursery?(Gcry::BlockHeader.from_user(p))
-    STDERR.puts "FAIL: plant is still nursery after a surviving minor — the old-node skip would not apply"
+    STDERR.puts "FAIL: plant is still nursery after a surviving minor, so the minor probe would test a nursery node"
     exit 1
   end
   GC.free(p)
@@ -159,9 +144,11 @@ def claim_probe(heap : Gcry::Heap) : Bool
     exit 1
   end
   heap.minor_collect(scan_stack: true)
-  still_free = Gcry::BlockHeader.free?(Gcry::BlockHeader.from_user(p))
-  # Keep `p` live across the collect so the compiler does not drop it
+  after_minor = Gcry::BlockHeader.free?(Gcry::BlockHeader.from_user(p))
+  heap.collect(scan_stack: true)
+  after_major = Gcry::BlockHeader.free?(Gcry::BlockHeader.from_user(p))
+  # Keep `p` live across both collections so the compiler does not drop it
   # below the SP the scrub zeroes.
   LibC.write(2, pointerof(p), 0)
-  still_free
+  {after_minor, after_major}
 end

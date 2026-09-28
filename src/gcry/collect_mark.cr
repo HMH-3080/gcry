@@ -94,7 +94,7 @@ module Gcry
     # only shared mutations are the mark bit (atomic on the bitmap path, and
     # per-object with no shared word on the header path, so double-marking is
     # idempotent) and the mark-stack push, which is the one thing that still
-    # takes the lock, plus the TLAB free-claim's freelist surgery.
+    # takes the lock.
     @[AlwaysInline]
     private def mark_impl(pointer : Void*, gate_type_id : Bool, base_only : Bool, source : RootSource) : Nil
       mark_impl_unlocked(pointer, gate_type_id, base_only, source)
@@ -191,46 +191,24 @@ module Gcry
       return unless found
       header, chunk = found
 
-      # Mid-`tlab_alloc_small` STW: mutator holds FREE freelist nodes on-stack.
-      # find_object ignores FREE → empty-chunk munmap risk. Clear FREE but keep
-      # next_free so scrub can walk the chain (BlockHeader.set_used would null
-      # next_free and sever the freelist → OOM). Do not scan (uninit payload).
+      # A candidate that names a block nobody holds is a stale word, not a root.
       #
-      # Also mark the rest of the freelist chain reachable via next_free while
-      # leaving those nodes FREE. Stack roots usually hold only the current
-      # `user`; TLAB batches the tail. Unmarked FREE tails make all-free chunks
-      # look empty → munmap → SEGV in free? when the mutator resumes
-      # (Kemal + GCRY_TLAB=1 @ EC1).
-      #
-      # Minor × old: never claim. Minor does not munmap old chunks, and clearing
-      # FREE on an old freelist node (then skipping mark) leaves USED-on-freelist
-      # for scrub to drop — silent old-freelist corruption under nursery+TLAB.
       # `block_allocated?`, not the header flag: on a bitmap chunk the sweep
       # leaves FREE stale on every block it reclaimed, and marking one would
       # resurrect it into `occ` on the next `occ = mark`.
-      if !block_allocated?(chunk, header)
-        return unless @tlab_enabled && @stop_the_world
-        return unless source == RootSource::Stack || source == RootSource::Thread ||
-                      source == RootSource::Parked
-        if base_only && addr != user_of(chunk, header).address
-          return
-        end
-        if @minor_only && !BlockHeader.nursery?(header)
-          # Pre-fix: clear FREE before this filter, then skip mark.
-          # `make nursery-tlab-smoke --disabled` requires the USED-unmarked
-          # node. Dropping the assignment reddens it.
-          if @tlab_minor_free_old
-            h = header.value
-            h.flags = h.flags & ~BlockHeader::Flags::FREE
-            header.value = h
-          end
-          return
-        end
-        # Freelist surgery (clear FREE, walk next_free) mutates shared list
-        # state, so it stays under the lock when parallel.
-        claim_free_tlab_block(header, chunk)
-        return
-      elsif base_only
+      #
+      # Until 2026-09-28 a TLAB heap "claimed" such a block when a stack or
+      # thread root pointed at it: cleared FREE and marked its `next_free`
+      # chain, on the theory that a mutator could be stopped holding FREE nodes
+      # out of its TLAB and a chunk of them would look empty. That stopped
+      # being possible on 2026-09-27. The collector now takes every TLAB slot
+      # lock before it stops the world, and a refill overtaken by a stop throws
+      # its batch away by epoch (`tlab_refill_once`). The claim was left turning
+      # stale FREE pointers into USED blocks on the class lists, and it had
+      # already been found corrupting old freelists during a minor
+      # (`make nursery-tlab-smoke`; `bench/log/linux/2026-09-28-tlab-claim-retired/`).
+      return unless block_allocated?(chunk, header)
+      if base_only
         # Object-base only on ambient roots: interiors into String/Array buffers
         # inflate false retention. Heap marks must allow interiors (shift).
         return if addr != user_of(chunk, header).address
@@ -261,34 +239,6 @@ module Gcry
       # preserve its mark and attribution without a queue round trip.
       return if atomic_of(chunk, header)
       mark_stack_push(header)
-    end
-
-    # The TLAB on-stack-freelist claim, isolated so it can hold the lock without
-    # putting one on the common mark path. See the long note at the call site.
-    private def claim_free_tlab_block(header : BlockHeader*, chunk : ChunkHeader*) : Nil
-      locked = @mark_parallel
-      @mark_lock.lock if locked
-      begin
-        h = header.value
-        h.flags = h.flags & ~BlockHeader::Flags::FREE
-        header.value = h
-        # bitmap_alloc replaces the freelist with the pool cursor — no on-stack
-        # freelist nodes to claim, so this cannot fire there.
-        return if @bitmap_alloc
-        set_block_mark_in(chunk, header) unless block_marked_in?(chunk, header)
-        walk = h.next_free
-        while walk
-          walk_found = find_block_with_chunk(walk)
-          break unless walk_found
-          _, walk_chunk = walk_found
-          wh = BlockHeader.from_user(walk)
-          break unless BlockHeader.free?(wh)
-          set_block_mark_in(walk_chunk, wh) unless block_marked_in?(walk_chunk, wh)
-          walk = wh.value.next_free
-        end
-      ensure
-        @mark_lock.unlock if locked
-      end
     end
 
     # First-mark source attribution (GCRY_LIVE_ATTR=1). Counts objects/bytes by
