@@ -55,3 +55,16 @@ host-condition window rather than a rate.
 
 Open in the ROADMAP. The next sighting should run with `GCRY_TRACE_LARGE=1`,
 which ties the release to its allocation.
+
+## A lane of nothing else
+
+`run-df.py`: five lanes, all `dormant_flush`, same binary, 90 minutes
+(`df-only-results.tsv`). It ran **339 runs (2 034 children) with 0 faults**.
+Two runs failed on a child killed at its deadline (seeds 20216 and 20297,
+`dormant_flush-20216-4.log`). The STW watchdog (5 s) printed nothing, so the
+hang was not inside a stop. That is about 0.1% of children. The earlier
+campaigns had none in 344 runs and one in the campaign above. Recorded, not
+chased: the harness captures no stacks for a killed child.
+
+So the fault stays at two sightings, both in the first minutes of one
+campaign.
