@@ -142,3 +142,11 @@ throughput (93.6k) reflects a loaded host (load average 7). A paired check
 right after it, same binary, 6 rounds (`paired_roc.py`, off / on / off), read
 on/off 0.996 against a null of 0.947, with RSS at the end of the load 1.000.
 So nothing on this path runs during the load.
+
+CI soak, 3 × 5 h at `--workers=4` on `95c3d0b` (run `36412599399`). The soak
+calls `GC.collect` every second, so every collection took the new path. **All
+three arms PASSED**, each ending at `ec_parallelism=4 os_threads=6`, with
+final RSS 8.5–8.7 MB against 9.5–10.0 MB in the previous 4-worker soak
+(`36341297555`, before this change). The overflow deadlock found the same
+day (`../2026-09-28-dormant-flush-large-release/`) did not hit these arms. It
+was fixed after them, in `448076a`.
