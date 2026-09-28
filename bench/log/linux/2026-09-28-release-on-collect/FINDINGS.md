@@ -136,3 +136,9 @@ After the fix, 10 runs each, every arm 0 failures: default,
 `GCRY_PARALLEL_DORMANT=1`, `GCRY_BITMAP=1` (header allocator), and the
 headerless default. The spec is the gate: it failed on three platforms before
 the fix.
+
+`make soft-soak-ec4` on `95c3d0b`: **40/40, soft 0, hard 0**. Its median
+throughput (93.6k) reflects a loaded host (load average 7). A paired check
+right after it, same binary, 6 rounds (`paired_roc.py`, off / on / off), read
+on/off 0.996 against a null of 0.947, with RSS at the end of the load 1.000.
+So nothing on this path runs during the load.
