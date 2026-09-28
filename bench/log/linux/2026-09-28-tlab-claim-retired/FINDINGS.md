@@ -77,3 +77,21 @@ Gates on the new tree: `crystal spec` (both layouts), `process_spec`,
 
 TLAB stays unsupported. This removes a cost from it; it does not make it
 supported.
+
+## A side effect on macOS: a gate's burst retained by one stale word
+
+With TLAB off, the removal compiles to the same checks as before. Still, on
+`bf6af40` the macOS job failed `make parallel-dormant` twice (a run and its
+rerun), each time with 60 MB resident after the collect and 4 MB of empty
+chunks in every arm. The commit before it had 46 MB of empty chunks, and
+Linux gave 30 of 30 identical results. The harness built its 64 MiB burst
+behind one outer array in a frame of main's, then scrubbed that stack region.
+A single conservative word that names the outer array retains all 64 MiB. A
+change to the marker's code, with no change to what it marks, left such a
+word in main's frames or registers on arm64.
+
+`1e95112` builds the burst on a thread that is joined before anything
+collects. It also fails a retained burst as retention, not as "the opt-in
+is inert" (proved by holding the burst in a class variable), and prints
+first-mark seeds by root source. macOS then showed 47 MB of empty chunks
+and 30 MB dormant (run `36473121324`), so the word was on main.
