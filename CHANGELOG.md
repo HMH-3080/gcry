@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Shorter pauses: gcry no longer scans its own layout tables as roots.**
+  The precise-layout tables were `StaticArray` class variables: 448 KiB of
+  type ids and offsets in the executable's BSS, 88% of what the static-root
+  scan read at every collection, none of it able to point at the heap. They
+  live in one `malloc` block now. On Kemal the static scan drops from 147 to
+  13 µs per collection, and at EC1 the pause from 683 to 549 µs, lower in
+  9 of 9 paired rounds with no change in throughput
+  (`bench/log/linux/2026-09-28-layout-off-bss/`).
 - **Linux: the world restarts in one batch.** `start_world` resumed one
   thread and waited for it to wake before resuming the next, so the restart
   cost the sum of every thread's wake-up, and on a busy host a trip through

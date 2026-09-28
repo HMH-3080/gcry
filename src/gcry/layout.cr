@@ -14,11 +14,14 @@ require "./raw_out"
 
 module Gcry
   module Layout
-    # Keep tables modest: multi-MiB `uninitialized` StaticArrays live in the
-    # process image and are walked by static-root scan. On Linux (blacklist on)
-    # that volume of ambient words was enough to UAF under process_spec STW
-    # (Fiber Monitor / ENV RWLock). Opt-in GCRY_AUTO_LAYOUTS / GCRY_SCAN_CAPS
-    # that need >4k entries should move to LibC-backed storage, not BSS.
+    # Keep tables modest. They used to be `uninitialized` StaticArrays in the
+    # process image, which the static-root scan walks at every collection: at
+    # 448 KiB they were 38% of Kemal's static roots, integers that can name no
+    # heap object, read 150 000 words a collection for nothing, and an earlier
+    # multi-MiB version fed enough ambient words to the conservative scan to
+    # cause a UAF under process_spec STW (Fiber Monitor / ENV RWLock). They
+    # live in one `malloc` block now, carved in `alloc_tables`, which no root
+    # scan reads (`bench/log/linux/2026-09-28-layout-off-bss/`).
     MAX_ENTRIES  = 4096
     MAX_OFFSETS  =   32
     OFFSET_SLOTS = MAX_ENTRIES * MAX_OFFSETS
@@ -33,33 +36,35 @@ module Gcry
     VALUE_MODE_REF   = 1_u8 # value is a Reference pointer in the entry
     VALUE_MODE_WORDS = 2_u8 # value is a struct; mark pointer-sized words (e.g. JSON::Any)
 
-    # `uninitialized` — no Crystal `once` (`.new` class-var init needs Fiber; GC.init is too early).
-    @@type_ids = uninitialized StaticArray(Int32, MAX_ENTRIES)
-    @@alloc_sizes = uninitialized StaticArray(UInt32, MAX_ENTRIES)
+    # `uninitialized` — no Crystal `once` (`.new` class-var init needs Fiber;
+    # GC.init is too early). The pointers are set by `alloc_tables`, which
+    # every entry point reaches through `ensure_booted` before any table read.
+    @@type_ids = uninitialized Pointer(Int32)
+    @@alloc_sizes = uninitialized Pointer(UInt32)
     # Unrounded instance_sizeof: cap conservative word-scan so size-class slack
     # (padding past the real object) is not treated as pointers.
-    @@scan_caps = uninitialized StaticArray(UInt32, MAX_ENTRIES)
-    @@n_scan = uninitialized StaticArray(UInt8, MAX_ENTRIES)
-    @@n_noscan = uninitialized StaticArray(UInt8, MAX_ENTRIES)
-    @@offsets = uninitialized StaticArray(UInt16, OFFSET_SLOTS) # scan then noscan packed
-    @@kind = uninitialized StaticArray(UInt8, MAX_ENTRIES)
-    @@hash_entries_off = uninitialized StaticArray(UInt16, MAX_ENTRIES)
-    @@hash_indices_off = uninitialized StaticArray(UInt16, MAX_ENTRIES)
-    @@hash_pow2_off = uninitialized StaticArray(UInt16, MAX_ENTRIES)
-    @@hash_entry_stride = uninitialized StaticArray(UInt16, MAX_ENTRIES)
-    @@hash_key_off = uninitialized StaticArray(UInt16, MAX_ENTRIES)
-    @@hash_key_bytes = uninitialized StaticArray(UInt16, MAX_ENTRIES)
-    @@hash_value_off = uninitialized StaticArray(UInt16, MAX_ENTRIES)
-    @@hash_value_mode = uninitialized StaticArray(UInt8, MAX_ENTRIES)
-    @@hash_value_bytes = uninitialized StaticArray(UInt16, MAX_ENTRIES)
+    @@scan_caps = uninitialized Pointer(UInt32)
+    @@n_scan = uninitialized Pointer(UInt8)
+    @@n_noscan = uninitialized Pointer(UInt8)
+    @@offsets = uninitialized Pointer(UInt16) # scan then noscan packed
+    @@kind = uninitialized Pointer(UInt8)
+    @@hash_entries_off = uninitialized Pointer(UInt16)
+    @@hash_indices_off = uninitialized Pointer(UInt16)
+    @@hash_pow2_off = uninitialized Pointer(UInt16)
+    @@hash_entry_stride = uninitialized Pointer(UInt16)
+    @@hash_key_off = uninitialized Pointer(UInt16)
+    @@hash_key_bytes = uninitialized Pointer(UInt16)
+    @@hash_value_off = uninitialized Pointer(UInt16)
+    @@hash_value_mode = uninitialized Pointer(UInt8)
+    @@hash_value_bytes = uninitialized Pointer(UInt16)
     # Crystal Hash: live entry range is @size + @deleted_count (NOT entries_capacity).
     # Walking capacity after realloc reads uninitialized slots → false marks / UAF.
-    @@hash_size_off = uninitialized StaticArray(UInt16, MAX_ENTRIES)
-    @@hash_deleted_off = uninitialized StaticArray(UInt16, MAX_ENTRIES)
+    @@hash_size_off = uninitialized Pointer(UInt16)
+    @@hash_deleted_off = uninitialized Pointer(UInt16)
     # @block is Proc? (16 bytes on 64-bit): word-scan, don't treat as a single pointer.
-    @@hash_block_off = uninitialized StaticArray(UInt16, MAX_ENTRIES)
-    @@hash_block_bytes = uninitialized StaticArray(UInt16, MAX_ENTRIES)
-    @@index = uninitialized StaticArray(Int32, INDEX_SIZE) # 0 = empty; else entry_index + 1
+    @@hash_block_off = uninitialized Pointer(UInt16)
+    @@hash_block_bytes = uninitialized Pointer(UInt16)
+    @@index = uninitialized Pointer(Int32) # 0 = empty; else entry_index + 1
     @@count = uninitialized Int32
     @@enabled = uninitialized Bool
     @@booted = uninitialized Bool
@@ -71,11 +76,88 @@ module Gcry
 
     private def self.ensure_booted : Nil
       return if @@booted
+      alloc_tables
       @@count = 0
       @@enabled = true
       @@unsafe_skips = 0_u64
       INDEX_SIZE.times { |i| @@index[i] = 0 }
       @@booted = true
+    end
+
+    # One zeroed block for every table, each at an 8-byte-aligned offset.
+    private def self.alloc_tables : Nil
+      total = 0_u64
+      total += table_bytes(sizeof(Int32), MAX_ENTRIES)
+      total += table_bytes(sizeof(UInt32), MAX_ENTRIES)
+      total += table_bytes(sizeof(UInt32), MAX_ENTRIES)
+      total += table_bytes(sizeof(UInt8), MAX_ENTRIES)
+      total += table_bytes(sizeof(UInt8), MAX_ENTRIES)
+      total += table_bytes(sizeof(UInt16), OFFSET_SLOTS)
+      total += table_bytes(sizeof(UInt8), MAX_ENTRIES)
+      total += table_bytes(sizeof(UInt16), MAX_ENTRIES)
+      total += table_bytes(sizeof(UInt16), MAX_ENTRIES)
+      total += table_bytes(sizeof(UInt16), MAX_ENTRIES)
+      total += table_bytes(sizeof(UInt16), MAX_ENTRIES)
+      total += table_bytes(sizeof(UInt16), MAX_ENTRIES)
+      total += table_bytes(sizeof(UInt16), MAX_ENTRIES)
+      total += table_bytes(sizeof(UInt16), MAX_ENTRIES)
+      total += table_bytes(sizeof(UInt8), MAX_ENTRIES)
+      total += table_bytes(sizeof(UInt16), MAX_ENTRIES)
+      total += table_bytes(sizeof(UInt16), MAX_ENTRIES)
+      total += table_bytes(sizeof(UInt16), MAX_ENTRIES)
+      total += table_bytes(sizeof(UInt16), MAX_ENTRIES)
+      total += table_bytes(sizeof(UInt16), MAX_ENTRIES)
+      total += table_bytes(sizeof(Int32), INDEX_SIZE)
+      block = LibC.malloc(LibC::SizeT.new(total)).as(UInt8*)
+      raise OutOfMemoryError.new("layout tables") if block.null?
+      block.clear(total)
+      at = block
+      @@type_ids = at.as(Int32*)
+      at += table_bytes(sizeof(Int32), MAX_ENTRIES)
+      @@alloc_sizes = at.as(UInt32*)
+      at += table_bytes(sizeof(UInt32), MAX_ENTRIES)
+      @@scan_caps = at.as(UInt32*)
+      at += table_bytes(sizeof(UInt32), MAX_ENTRIES)
+      @@n_scan = at.as(UInt8*)
+      at += table_bytes(sizeof(UInt8), MAX_ENTRIES)
+      @@n_noscan = at.as(UInt8*)
+      at += table_bytes(sizeof(UInt8), MAX_ENTRIES)
+      @@offsets = at.as(UInt16*)
+      at += table_bytes(sizeof(UInt16), OFFSET_SLOTS)
+      @@kind = at.as(UInt8*)
+      at += table_bytes(sizeof(UInt8), MAX_ENTRIES)
+      @@hash_entries_off = at.as(UInt16*)
+      at += table_bytes(sizeof(UInt16), MAX_ENTRIES)
+      @@hash_indices_off = at.as(UInt16*)
+      at += table_bytes(sizeof(UInt16), MAX_ENTRIES)
+      @@hash_pow2_off = at.as(UInt16*)
+      at += table_bytes(sizeof(UInt16), MAX_ENTRIES)
+      @@hash_entry_stride = at.as(UInt16*)
+      at += table_bytes(sizeof(UInt16), MAX_ENTRIES)
+      @@hash_key_off = at.as(UInt16*)
+      at += table_bytes(sizeof(UInt16), MAX_ENTRIES)
+      @@hash_key_bytes = at.as(UInt16*)
+      at += table_bytes(sizeof(UInt16), MAX_ENTRIES)
+      @@hash_value_off = at.as(UInt16*)
+      at += table_bytes(sizeof(UInt16), MAX_ENTRIES)
+      @@hash_value_mode = at.as(UInt8*)
+      at += table_bytes(sizeof(UInt8), MAX_ENTRIES)
+      @@hash_value_bytes = at.as(UInt16*)
+      at += table_bytes(sizeof(UInt16), MAX_ENTRIES)
+      @@hash_size_off = at.as(UInt16*)
+      at += table_bytes(sizeof(UInt16), MAX_ENTRIES)
+      @@hash_deleted_off = at.as(UInt16*)
+      at += table_bytes(sizeof(UInt16), MAX_ENTRIES)
+      @@hash_block_off = at.as(UInt16*)
+      at += table_bytes(sizeof(UInt16), MAX_ENTRIES)
+      @@hash_block_bytes = at.as(UInt16*)
+      at += table_bytes(sizeof(UInt16), MAX_ENTRIES)
+      @@index = at.as(Int32*)
+      at += table_bytes(sizeof(Int32), INDEX_SIZE)
+    end
+
+    private def self.table_bytes(elem : Int32, count : Int32) : UInt64
+      (elem.to_u64 * count.to_u64 + 7_u64) & ~7_u64
     end
 
     # Compile-time prefix blacklist. Types whose ivar layout Crystal guarantees
@@ -201,8 +283,8 @@ module Gcry
       n_noscan = @@n_noscan[i].to_i32
       base = i * MAX_OFFSETS
       Entry.new(
-        Slice.new(@@offsets.to_unsafe + base, n_scan),
-        Slice.new(@@offsets.to_unsafe + base + n_scan, n_noscan),
+        Slice.new(@@offsets + base, n_scan),
+        Slice.new(@@offsets + base + n_scan, n_noscan),
         @@alloc_sizes[i],
         @@scan_caps[i],
         @@kind[i],
