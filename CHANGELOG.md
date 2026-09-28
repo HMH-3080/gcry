@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **`GC.collect` and the idle collector give memory back in multi-threaded
+  programs too.** The collections that ask for memory back are
+  `GC.collect`, the idle collection after two minutes without an
+  allocation, and the emergency collection before an `OutOfMemoryError`. On
+  a multi-mutator heap they used to keep every empty chunk mapped. Now they
+  make them dormant, as a single-threaded heap's same collections unmap
+  them.
+
+  Kemal RSS after `GC.collect`:
+  - 4 workers: **84.9 → 20.1 MB**.
+  - 1 worker plus one extra thread: **31.6 → 16.6 MB** (16.0 without the
+    thread).
+
+  An EC4 server left idle after a burst drops from 83 MB to 18 MB, where it
+  used to keep all of it. Ordinary collections are unchanged, so throughput
+  under load is unchanged. `GCRY_PARALLEL_RELEASE_ON_COLLECT=0` keeps the
+  empties mapped (`bench/log/linux/2026-09-28-release-on-collect/`).
+
 ## [0.29.0] - 2026-09-28
 
 ### Added

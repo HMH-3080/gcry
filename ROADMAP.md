@@ -3639,8 +3639,13 @@ draw of `bench/log/macos/2026-08-10-053800/` — which is what makes it schedula
       once every thread that can run a fiber has one; SYSMON and the idle
       collector no longer count
       (`bench/log/linux/2026-09-27-parked-fiber-sp/`). EC4 gained the same:
-      2.53 → 0.81 ms. The RSS half remains, with `GCRY_PARALLEL_DORMANT=1` as
-      its remedy.
+      2.53 → 0.81 ms. **The RSS half is fixed for collections that ask for
+      memory back (2026-09-28).** `GC.collect`, idle and emergency
+      collections now make a multi-mutator heap's empties dormant: 31.6 →
+      16.6 MB after `GC.collect`, against 16.0 with no extra thread
+      (`bench/log/linux/2026-09-28-release-on-collect/`). Between those
+      collections the empties stay mapped, as they do for any multi-mutator
+      program; `GCRY_PARALLEL_DORMANT=1` releases them at every major.
       gcry calls a program multi-mutator when Crystal's list has more than two
       threads, so one thread of its own (an `Isolated` context, a driver's
       `Thread.new`) moves a default-context program onto the multi-mutator root
