@@ -102,3 +102,8 @@ The fix is `Heap#sat_sub`. It reads the counter once, stops at zero, and
 cannot raise. Every `x -= n if x >= n` on a shared byte counter uses it (11
 sites). A lost update skews a statistic that the next major recounts; a raise
 under the lock had deadlocked the heap.
+
+After the fix (`448076a`), the same `dormant_flush`-only campaign, 5 lanes for
+2 h: **434 runs (2 604 children), 0 failures, 0 hung children**
+(`df-only-after-fix.tsv`). Before it, the same lane had 3 hung children in
+434 runs: 339 without capture and 95 with it.
