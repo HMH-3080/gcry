@@ -1418,11 +1418,34 @@ module Gcry
             end
           end
         else
-          Roots.scan_range(Pointer(Void).new(top), Pointer(Void).new(bottom), safe: true) do |candidate|
+          Roots.scan_range(Pointer(Void).new(top), Pointer(Void).new(bottom), safe: !pooled_stack_readable?(stack, top)) do |candidate|
             mark_root_candidate(candidate, source: RootSource::Parked)
           end
         end
       end
+    end
+
+    # Can `[top, stack.bottom)` be read without probing it page by page?
+    #
+    # For a stack Crystal allocated (`reusable?`: `allocate_stack`, one `mmap`
+    # with a guard at the low end) and a *top* above the guard's real extent,
+    # yes. A fiber leaves `Fiber.unsafe_each` (`Fiber.inactive`) before its
+    # stack goes back to the pool, and the pool unmaps only stacks it holds,
+    # so a listed fiber's pooled stack is mapped end to end. The probe is a
+    # `write` and a `read` per range: measured 2026-09-28 at 32 µs of Kemal's
+    # 550 µs EC1 pause, about 105 parked fibers at 0.3 µs each
+    # (`bench/log/linux/2026-09-28-fiber-probe/`).
+    #
+    # A thread's main fiber runs on bounds glibc reported, which can include a
+    # guard; that stack, and any *top* inside the guard's page, keep the probe.
+    # The page size is the kernel's: on 16 KiB pages the 4 KiB guard
+    # `allocate_stack` asks for protects a whole page.
+    private def pooled_stack_readable?(stack : Fiber::Stack, top : UInt64) : Bool
+      {% if flag?(:unix) %}
+        stack.reusable? && top >= stack.pointer.address &+ Roots.runtime_page_size
+      {% else %}
+        false
+      {% end %}
     end
 
     private def scan_exclusive_parked_fiber_leaf(top : UInt64, bottom : UInt64) : Nil

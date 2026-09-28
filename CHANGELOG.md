@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Parked fibers on Crystal-allocated stacks are read without a syscall
+  probe.** Every parked fiber's stack range was checked for readability with
+  a `write` and a `read` of its first page, at every collection: 0.3 µs a
+  fiber, 28 µs of Kemal's 550 µs EC1 pause with about 105 connections. A
+  pooled stack still on the fiber list is mapped from its guard to its end,
+  because a fiber leaves the list before its stack goes back to the pool.
+  So only thread stacks, and ranges that start inside the guard's page (in
+  the kernel's page size), are still probed. Kemal EC1 pause: 549 → 525 µs,
+  lower in 8 of 8 paired rounds (`bench/log/linux/2026-09-28-fiber-probe/`).
 - **Shorter pauses: gcry no longer scans its own layout tables as roots.**
   The precise-layout tables were `StaticArray` class variables: 448 KiB of
   type ids and offsets in the executable's BSS, 88% of what the static-root

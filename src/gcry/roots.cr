@@ -217,6 +217,18 @@ module Gcry
 
     @@page_size_checked = false
 
+    # The kernel's page size, as `sysconf` reports it at `GC.init`; `PAGE_SIZE`
+    # until then. Where a guard's real extent matters, this is the unit: a
+    # 4 KiB `mprotect` on a 16 KiB-page kernel protects the whole 16 KiB page.
+    # `uninitialized`, read as 0 until set: an initializer would be a Crystal
+    # `once`, and `GC.init` runs before there is a fiber to run it on.
+    @@runtime_page_size = uninitialized UInt64
+
+    def self.runtime_page_size : UInt64
+      v = @@runtime_page_size
+      v == 0 ? PAGE_SIZE : v
+    end
+
     # Called once from `GC.init`. Signal-safety is not a concern here — this
     # runs before any collection — but allocation is: `RawOut` only.
     def self.check_page_size : Nil
@@ -224,6 +236,7 @@ module Gcry
       @@page_size_checked = true
       {% if flag?(:unix) %}
         actual = LibC.sysconf(LibC::SC_PAGESIZE)
+        @@runtime_page_size = actual.to_u64 if actual > 0
         return if actual <= 0 || actual.to_u64 == PAGE_SIZE
         buf = uninitialized UInt8[RawOut::LIMIT]
         n = RawOut.append(buf.to_unsafe, 0, "gcry: WARNING: this kernel's page size is ")
