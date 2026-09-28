@@ -139,6 +139,16 @@ module Gcry
                     can_dormant = within_retain ||
                                   (!munmap_empty_chunks_this_collect? && @parallel_empty_chunk_dormant_all && @empty_chunk_retain > 0) ||
                                   (!munmap_empty_chunks_this_collect? && sweep_multi_mutator? && parallel_release_on_collect?)
+                    # Never a header chunk in a sweep that runs with mutators
+                    # allocating. Its FREE blocks stay on the class freelist
+                    # until the rebuild at the end of this sweep, and a mutator
+                    # that takes one in between writes into a chunk the post-STW
+                    # flush then releases: `8_medium_cursor_spec` read zeroed
+                    # stamps in 4 of 5 runs with `GCRY_PARALLEL_DORMANT=1` on
+                    # the header allocator, 3 of 5 once `GC.collect` released
+                    # by default (2026-09-28). A bitmap chunk has no freelist;
+                    # its pool excludes dormant chunks and pins the cursor's.
+                    can_dormant = false if can_dormant && after_world && !bitmap_alloc_chunk?(chunk)
                     # One cycle's grace before an unmap. The warm budget is
                     # the threshold, and a cycle allocates the threshold, so
                     # the two sit on a knife edge: a class that runs one chunk

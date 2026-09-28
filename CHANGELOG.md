@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Header allocator: the dormant opt-in could release pages under live
+  objects in a multi-threaded program without TLAB.** The sweep there runs
+  while mutators allocate. When it made an empty chunk dormant, that chunk's
+  FREE blocks stayed on the class freelist until the rebuild at the end of
+  the sweep. A mutator that took one in between wrote into a chunk the
+  post-STW release then zeroed: `8_medium_cursor_spec` failed 4 of 5 runs with
+  `GCRY_PARALLEL_DORMANT=1`. This needs `-Dgcry_block_headers` and
+  `GCRY_BITMAP_ALLOC=0`. Such a sweep no longer makes a header chunk dormant;
+  the bitmap allocator, which has no freelist, is unaffected.
+
 ### Changed
 
 - **`GC.collect` and the idle collector give memory back in multi-threaded
