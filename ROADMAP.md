@@ -4053,7 +4053,11 @@ Target: Match Boehm on the workloads Crystal users actually run.
       (`multi_mutator_threads?` false at 2 threads). Engagement is observable
       via `low_water_skips` on `/gc-stats` — the gate is a thread count a real
       app can sit on the boundary of.
-- [ ] **Cheap root scan at scale — what is left.** The EC4 residual is
+- [x] **Cheap root scan at scale — done for the default (2026-09-27): EC4
+      tuned 1.70 ms on Linux CI and 1.11 ms on macOS, from parked fibers
+      scanned from their SP.** `GCRY_SOUND=1` keeps its whole scan, 3.5–4.6×
+      that; whether it should share the parked-SP path is a policy question
+      (docs/SOUND-DEFAULTS.md). The EC4 residual was
       `GCRY_SOUND=1`'s, and quoting it as a ratio has become misleading twice
       over. **9950X, before the default path got the skip:** tuned 7.1 ms,
       sound 13.0 ms — **+83%**. **i3-12100F, after:** tuned 3.60 ms, sound

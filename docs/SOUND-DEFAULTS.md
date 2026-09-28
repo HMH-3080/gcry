@@ -888,6 +888,10 @@ fix that reversal pointed at — has now reversed it back. Current standing:
 | Kemal EC1 + one extra thread, same | **2.56 ms** | 3.87 ms (+51%), req/s −2% (in noise) |
 | Kemal **EC4**, 2026-09-26, `macos-latest` CI, paired ×10 | **3.08 ms** | 17.47 ms (**5.8×**), req/s −13%, RSS +37% |
 | same, after the Darwin resident-count low-water (`6ed9fc9`) | **3.33 ms** | 4.06 ms (**+25%**), req/s +2% (in noise), RSS equal |
+| Kemal **EC4**, 2026-09-28, `ubuntu-latest` CI, after parked fibers are scanned from their SP | **1.70 ms** | 5.84 ms (3.46×), req/s in noise |
+| Kemal EC1 + one extra thread, same | **1.41 ms** | 6.45 ms (4.56×), req/s −5% |
+| Kemal **EC4**, 2026-09-28, `macos-latest` CI, same | **1.11 ms** | 4.40 ms (3.93×), req/s in noise |
+| Kemal EC1 + one extra thread, macOS, same | **0.90 ms** | 4.01 ms (4.46×), req/s in noise |
 
 The 2026-09-26 rows are `bench/sound_matrix.py`, dispatch input
 `sound_matrix_rounds` (`bench/log/linux/2026-09-26-sound-matrix/`). On Linux
@@ -900,6 +904,23 @@ same afternoon it was proven from the VM object's resident count instead
 measured, the condition at the end of this document is met on both
 platforms.** The fat app is the one large-scan shape not re-measured, and
 flipping the default remains a decision this document does not take.
+
+**2026-09-28: the ratio grew again, and again from the denominator.** Since
+`db50034` a parked fiber is scanned from its saved `stack_top` whenever every
+thread that can run a fiber has a recorded SP
+(`bench/log/linux/2026-09-27-parked-fiber-sp/`). That took tuned EC4 from
+about 3.1 to 1.7 ms on Linux and from 3.3 to 1.1 ms on macOS. `GCRY_SOUND=1`
+keeps its whole-stack scan by design (lag 0 opts out of the parked-SP path),
+so its absolute pause is where it was and the ratio reads 3.5–4.6×
+(`bench/log/linux/2026-09-28-sound-matrix/`). Throughput stays in the noise.
+
+Whether sound should take the parked-SP scan too is now the question, and it
+is a policy one. The scan is exact given two things. The first is
+`swapcontext`'s store order, read from `fiber/context/*.cr`. The second is
+that SYSMON and the idle collector never run a user fiber — a property of
+Crystal's runtime and gcry's, not something the collector checks. Sound's
+promise is that no such assumption can drop a root, so this document leaves
+it out.
 | fat app, ~72 MiB heap | **10.7 ms** | 18.2 ms (+70%) |
 | fat app, ~46 MiB heap | 2.9 ms | 3.0 ms (+6.5%) |
 
