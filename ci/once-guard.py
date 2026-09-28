@@ -21,6 +21,13 @@ The rule is in the comments of all three platform files, and it has now been
 broken twice by the same expression. So it is mechanical: in these files a class
 variable is declared `uninitialized`, or with a literal (`false`, `0`, `nil`),
 and given its real value in a method.
+
+`class_getter x : T = <rhs>` (and `class_property`, `class_setter`) declares
+the same class variable and is checked the same way. On 2026-09-28
+`class_getter runtime_page_size : UInt64 = PAGE_SIZE` in `roots.cr`, read by
+`check_page_size` from `GC.init`, killed every `-Dgc_none` process at startup.
+This guard did not see it: it only knew `@@x =`, and `roots.cr` was not on
+the list.
 """
 from __future__ import annotations
 
@@ -32,6 +39,8 @@ import sys
 # world. Not a whole-tree rule: everything else in the tree runs after
 # `Crystal.main` and may use whatever initializer reads best.
 GUARDED = [
+    "src/gcry/roots.cr",
+    "src/gcry/layout.cr",
     "src/gcry/stw_slots.cr",
     "src/gcry/platform/linux_stw.cr",
     "src/gcry/platform/darwin_stw.cr",
@@ -55,16 +64,30 @@ LITERAL = re.compile(
 )
 
 DECL = re.compile(r"^\s*(@@\w+)\s*=\s*(.+?)\s*$")
+# `class_getter name : Type = rhs`; the type is optional.
+MACRO_DECL = re.compile(r"^\s*class_(?:getter|property|setter)[?!]?\s+(\w+)\s*(?::\s*[^=]+?)?\s*=\s*(.+?)\s*$")
 
 
 def offenders(path: pathlib.Path) -> list[tuple[int, str, str]]:
     found = []
+    lines = path.read_text().splitlines()
+    # A variable a `class_*` macro declares has its declaration there; any
+    # `@@x =` line for it is an assignment in a method.
+    macro_names = {f"@@{m.group(1)}" for m in map(MACRO_DECL.match, lines) if m}
     seen: set[str] = set()
-    for number, line in enumerate(path.read_text().splitlines(), start=1):
+    for number, line in enumerate(lines, start=1):
+        macro = MACRO_DECL.match(line)
+        if macro:
+            name, rhs = f"@@{macro.group(1)}", macro.group(2)
+            if not LITERAL.match(rhs):
+                found.append((number, name, rhs))
+            continue
         match = DECL.match(line)
         if not match:
             continue
         name, rhs = match.group(1), match.group(2)
+        if name in macro_names:
+            continue
         # Only the first `@@x = ...` in a file is the declaration; later ones
         # are assignments inside methods, which run after `Crystal.main` or
         # from a method the collector calls deliberately.
