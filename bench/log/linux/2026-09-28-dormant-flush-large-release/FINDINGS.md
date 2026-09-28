@@ -107,3 +107,13 @@ After the fix (`448076a`), the same `dormant_flush`-only campaign, 5 lanes for
 2 h: **434 runs (2 604 children), 0 failures, 0 hung children**
 (`df-only-after-fix.tsv`). Before it, the same lane had 3 hung children in
 434 runs: 339 without capture and 95 with it.
+
+## A default-configuration campaign on `aea94a0`, with the large-object trace on
+
+The mixed campaign that saw the two faults ran again on `aea94a0`, which has
+the overflow fix. It used the same eleven lanes and five at a time, with
+`GCRY_TRACE_LARGE=1` and hang capture on the `dormant_flush` lane
+(`campaign-030-summary.md`). It stopped after 2.4 h, to move the host to
+newer code: **2 194 runs, 12 lane-hours, 0 failures, 0 timeouts**, about 200 of
+them `dormant_flush`. The fault did not recur. It stays at two sightings, in
+the first minutes of one campaign on `2a46123`.
