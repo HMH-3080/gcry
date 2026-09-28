@@ -775,6 +775,14 @@ knob-doc-check:
 once-guard:
 	@python3 ci/once-guard.py
 
+# gcry's own class variables sit in the executable's writable segments, which
+# the static-root scan reads at every collection. 448 KiB of layout tables
+# there were 130 µs of Kemal's pause until 2026-09-28. Fails on one `Gcry::`
+# static symbol over 16 KiB or 64 KiB in all. Linux (`nm -C`).
+.PHONY: static-footprint-check
+static-footprint-check:
+	@python3 ci/static-footprint-check.py
+
 # A gate that pins a knob the compile default ignores must build the layout
 # that honours it. `GCRY_BITMAP_ALLOC=0`, `GCRY_NURSERY` and `GCRY_TLAB` are
 # inert on the headerless default: they warn on stderr and change nothing, so

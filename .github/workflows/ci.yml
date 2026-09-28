@@ -151,6 +151,12 @@ jobs:
       - name: Once-initializer guard
         run: make once-guard
 
+      # Every byte of gcry's own writable static data is read by the
+      # static-root scan at every collection: 448 KiB of layout tables there
+      # were 130 µs of Kemal's pause until 2026-09-28.
+      - name: gcry static data stays small
+        run: make static-footprint-check
+
       # A knob nobody documented is a knob nobody can find. The env reference
       # had drifted by 33 before this step existed.
       - name: Env knob reference is complete
