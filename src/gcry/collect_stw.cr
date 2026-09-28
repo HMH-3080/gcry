@@ -793,6 +793,15 @@ module Gcry
           # (src/gcry/platform/linux_stw.cr).
           Platform.end_stop_epoch
           ack_via_thread = Platform.stw_ack_via_thread?
+          # Every thread is sent its resume before any is waited for, as the
+          # stop sends every suspend before it waits. Until 2026-09-28 this
+          # resumed one thread and spun until it acknowledged before touching
+          # the next, so the restart cost the *sum* of the threads' wake-up
+          # latencies, each a futex wake plus a context switch, and on a busy
+          # host a trip through the run queue. Each thread acknowledges in its
+          # own slot, so nothing orders one wake against another. The wait is
+          # kept: the next stop must not find a thread still inside this one's
+          # handler.
           Thread.unsafe_each do |thread|
             next if thread == current_thread
             next if stw_signal_exempt?(thread)
@@ -800,8 +809,13 @@ module Gcry
             # and Crystal's `Thread#resume` panics the process when
             # `pthread_kill` fails.
             next if suspend_abandoned?(thread.to_unsafe.unsafe_as(UInt64))
-            slot = suspend_ack_slot(thread, ack_via_thread)
             thread.resume
+          end
+          Thread.unsafe_each do |thread|
+            next if thread == current_thread
+            next if stw_signal_exempt?(thread)
+            next if suspend_abandoned?(thread.to_unsafe.unsafe_as(UInt64))
+            slot = suspend_ack_slot(thread, ack_via_thread)
             spins = 0
             while suspend_acknowledged?(thread, slot)
               Intrinsics.pause

@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Linux: the world restarts in one batch.** `start_world` resumed one
+  thread and waited for it to wake before resuming the next, so the restart
+  cost the sum of every thread's wake-up, and on a busy host a trip through
+  the run queue for each. It now resumes all of them and then waits, as the
+  stop already did. Kemal at EC4 under load, paired against the old binary
+  on the same host: the restart is 1.4 ms shorter and the pause 1.5 ms
+  shorter (8 of 9 and 7 of 9 rounds; a null arm moved 0.3 ms). Throughput is
+  unchanged (`bench/log/linux/2026-09-28-batched-resume/`).
 - **TLAB (unsupported): the marker no longer "claims" a FREE block that a
   stack word points at.** On a TLAB heap it used to clear FREE and mark the
   block's freelist chain, for a mutator stopped holding TLAB nodes. Since
