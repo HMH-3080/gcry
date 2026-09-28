@@ -48,3 +48,22 @@ three runs each, the `stw_start` p50 was 16.7 / 20.3 / 20.6 ms old against
 Gates: `crystal spec`, `process_spec`, `make stw-epoch`, `stw-ack-window`,
 `stw-watchdog`, `stw-monitor-gate`, `stw-startup-hang`,
 `stw-mt-property-test-short` and `thread-storm-short`.
+
+## And the stop? Nothing cheap left in it
+
+A throwaway build timed each step of `stop_world_quiescing_roots` on Kemal
+under `wrk -c100` for 15 s, with the same campaign load. These are means per
+stop:
+
+| step | EC4 (97 stops) | EC1 (419 stops) |
+|---|---:|---:|
+| Monitor gate, roots and finalizer locks, TLAB slots | 0 µs | 0 µs |
+| staged-thread wait, `Thread.lock` | 0 µs | 0 µs |
+| stack-bounds snapshot, slot reservation | 10 µs | 5 µs |
+| sending the signals | 20 µs | 0 µs |
+| **waiting for the acknowledgements** | **1 098 µs** | 0 µs |
+
+The stop already signals every thread before it waits. What remains is each
+thread getting a CPU to run its handler, and nothing in gcry's code decides
+that. Taking parked schedulers out of the signal set, with a handshake like
+the Monitor's, would be the next step, and a much larger one.
