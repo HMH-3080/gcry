@@ -3633,7 +3633,10 @@ draw of `bench/log/macos/2026-08-10-053800/` — which is what makes it schedula
       per stack. Re-measured: macOS sound ÷ tuned at EC4 5.79× → **1.25×**
       pause, RSS 1.37× → 1.00×; Darwin EC4 sound roots 19.3 → 3.1 ms.
       `bench/log/linux/2026-09-26-sound-matrix/FINDINGS.md`
-- [ ] **One extra thread costs an EC1 program 2.7× pause and +63% RSS.**
+- [x] **One extra thread costs an EC1 program 2.7× pause and +63% RSS — both
+      halves fixed (2026-09-27/28): pause 2.00 → 0.59 ms, RSS after
+      `GC.collect` 31.6 → 16.6 MB, against 0.50 ms and 16.0 MB with no extra
+      thread.**
       **The pause half is fixed (2026-09-27): 2.00 → 0.59 ms**, against 0.50
       with no extra thread. A parked fiber is now scanned from its saved SP
       once every thread that can run a fiber has one; SYSMON and the idle
