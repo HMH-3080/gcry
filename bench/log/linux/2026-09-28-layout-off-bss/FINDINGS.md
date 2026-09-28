@@ -64,3 +64,16 @@ waiting for threads to acknowledge the stop, and the null arm moved
 Gates: `crystal spec` (both layouts), `process_spec`,
 `make layout-property-test-short`, `ivar-layout-roots` and
 `static-bss-roots`.
+
+## EC4 on a quiet host
+
+The same A/B with the campaign stopped, 9 rounds:
+
+| | static | pause |
+|---|---:|---:|
+| old | 142 µs | 1 007 µs |
+| null | 142 µs | 974 µs |
+| new | **16 µs** | **853 µs** |
+
+- new − old, pause: **−140 µs, lower in 8/9**.
+- null − old, pause: +17 µs, lower in 4/9.

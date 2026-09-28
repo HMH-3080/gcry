@@ -14,17 +14,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   type ids and offsets in the executable's BSS, 88% of what the static-root
   scan read at every collection, none of it able to point at the heap. They
   live in one `malloc` block now. On Kemal the static scan drops from 147 to
-  13 µs per collection, and at EC1 the pause from 683 to 549 µs, lower in
-  9 of 9 paired rounds with no change in throughput
+  13 µs per collection. The pause drops from 683 to 549 µs at EC1 (9 of 9
+  paired rounds) and from 1 007 to 853 µs at EC4 (8 of 9), with no change
+  in throughput
   (`bench/log/linux/2026-09-28-layout-off-bss/`).
 - **Linux: the world restarts in one batch.** `start_world` resumed one
   thread and waited for it to wake before resuming the next, so the restart
   cost the sum of every thread's wake-up, and on a busy host a trip through
   the run queue for each. It now resumes all of them and then waits, as the
-  stop already did. Kemal at EC4 under load, paired against the old binary
-  on the same host: the restart is 1.4 ms shorter and the pause 1.5 ms
-  shorter (8 of 9 and 7 of 9 rounds; a null arm moved 0.3 ms). Throughput is
-  unchanged (`bench/log/linux/2026-09-28-batched-resume/`).
+  stop already did. Kemal at EC4, paired against the old binary: on a quiet
+  host the restart halves (80 → 42 µs, 9 of 9 rounds), too little to show in
+  a 1 ms pause. Under a loaded host it is 1.4 ms shorter and the pause
+  1.5 ms shorter (8 of 9 and 7 of 9 rounds; a null arm moved 0.3 ms).
+  Throughput is unchanged (`bench/log/linux/2026-09-28-batched-resume/`).
 - **TLAB (unsupported): the marker no longer "claims" a FREE block that a
   stack word points at.** On a TLAB heap it used to clear FREE and mark the
   block's freelist chain, for a mutator stopped holding TLAB nodes. Since

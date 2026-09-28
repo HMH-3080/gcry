@@ -67,3 +67,19 @@ The stop already signals every thread before it waits. What remains is each
 thread getting a CPU to run its handler, and nothing in gcry's code decides
 that. Taking parked schedulers out of the signal set, with a handshake like
 the Monitor's, would be the next step, and a much larger one.
+
+## On a quiet host
+
+The campaign was stopped and the same A/B repeated: 9 rounds, EC4, the host
+carrying only the desktop session. The pause is about 1 ms here, against
+6 ms under the campaign.
+
+| paired difference | `stw_start` | pause |
+|---|---:|---:|
+| null − old | +2 µs, lower in 3/9 | +7 µs, lower in 4/9 |
+| new − old | **−36 µs (80 → 42), lower in 9/9** | −2 µs, lower in 5/9 |
+
+The restart halves, but on an idle host it was 8% of the pause to begin
+with, and the difference in the pause is under the noise. The saving grows
+with contention: 1.4 ms under load, where every thread's wake waited in a
+run queue.
