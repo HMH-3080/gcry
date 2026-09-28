@@ -137,7 +137,8 @@ module Gcry
                     within_retain = @empty_chunk_retain > 0 &&
                                     (dormant_budget_used + mapped <= @empty_chunk_retain)
                     can_dormant = within_retain ||
-                                  (!munmap_empty_chunks_this_collect? && @parallel_empty_chunk_dormant_all && @empty_chunk_retain > 0)
+                                  (!munmap_empty_chunks_this_collect? && @parallel_empty_chunk_dormant_all && @empty_chunk_retain > 0) ||
+                                  (!munmap_empty_chunks_this_collect? && sweep_multi_mutator? && parallel_release_on_collect?)
                     # One cycle's grace before an unmap. The warm budget is
                     # the threshold, and a cycle allocates the threshold, so
                     # the two sit on a knife edge: a class that runs one chunk

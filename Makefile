@@ -1869,18 +1869,23 @@ darwin-page-query: $(BIN)
 # chunks dormant. It did nothing on Linux from 2026-08-03 to 2026-09-26 (its
 # budget defaulted to 0) and no gate noticed. Red arm, run every time: the same
 # knob with GCRY_EMPTY_CHUNK_RETAIN=0, the pre-fix budget, must stay inert.
+# The opt-in arms collect with an ordinary major (`--ordinary`): `GC.collect`
+# makes the empties dormant on its own since 2026-09-28, which the next pair
+# asserts, red arm `GCRY_PARALLEL_RELEASE_ON_COLLECT=0`.
 # Darwin also asserts the footprint: the dormant bytes must leave
 # `phys_footprint` (`MADV_FREE_REUSABLE`), and with `GCRY_DARWIN_REUSABLE=0`
 # (`MADV_FREE`) they must not.
 parallel-dormant: $(BIN)
 	$(CRYSTAL) build -Dgc_none bench/parallel_dormant.cr -o $(BIN)/parallel_dormant --error-trace
-	$(BIN)/parallel_dormant
-	GCRY_PARALLEL_DORMANT=1 $(BIN)/parallel_dormant --expect-dormant
-	GCRY_PARALLEL_DORMANT_ALL=1 $(BIN)/parallel_dormant --expect-dormant
-	GCRY_PARALLEL_DORMANT=1 GCRY_EMPTY_CHUNK_RETAIN=0 $(BIN)/parallel_dormant --expect-inert
+	$(BIN)/parallel_dormant --ordinary --expect-inert
+	GCRY_PARALLEL_DORMANT=1 $(BIN)/parallel_dormant --ordinary --expect-dormant
+	GCRY_PARALLEL_DORMANT_ALL=1 $(BIN)/parallel_dormant --ordinary --expect-dormant
+	GCRY_PARALLEL_DORMANT=1 GCRY_EMPTY_CHUNK_RETAIN=0 $(BIN)/parallel_dormant --ordinary --expect-inert
+	$(BIN)/parallel_dormant --expect-dormant
+	GCRY_PARALLEL_RELEASE_ON_COLLECT=0 $(BIN)/parallel_dormant --expect-inert
 	@if [ "$$(uname -s)" = Darwin ]; then \
-	  GCRY_PARALLEL_DORMANT=1 $(BIN)/parallel_dormant --expect-footprint-drop && \
-	  GCRY_DARWIN_REUSABLE=0 GCRY_PARALLEL_DORMANT=1 $(BIN)/parallel_dormant --expect-footprint-kept; \
+	  $(BIN)/parallel_dormant --expect-footprint-drop && \
+	  GCRY_DARWIN_REUSABLE=0 $(BIN)/parallel_dormant --expect-footprint-kept; \
 	fi
 
 lag-scan-rss: $(BIN)

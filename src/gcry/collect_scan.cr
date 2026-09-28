@@ -994,7 +994,23 @@ module Gcry
     private def release_empty_chunks_this_collect? : Bool
       return false unless @release_empty_chunks
       return true unless sweep_multi_mutator?
-      @parallel_empty_chunk_dormant || @parallel_empty_chunk_munmap
+      @parallel_empty_chunk_dormant || @parallel_empty_chunk_munmap || parallel_release_on_collect?
+    end
+
+    # A collection that asks for memory back — `GC.collect`, the idle
+    # collector, the emergency collection before an `OutOfMemoryError` — makes
+    # a multi-mutator heap's empty chunks dormant, all of them, as a
+    # single-mutator heap's same collection unmaps them. Until 2026-09-28 the
+    # multi-mutator sweep kept every empty chunk mapped even then: Kemal EC4
+    # read 84 MB after `GC.collect` against 21 MB with the dormant opt-in, and
+    # a server that went idle kept it for good. Ordinary collections are
+    # unchanged, so the throughput the opt-in costs under load (0.914× at
+    # `wrk -c100`) is not paid. `GCRY_PARALLEL_RELEASE_ON_COLLECT=0` keeps the
+    # empties mapped as before.
+    property parallel_release_on_collect : Bool = true
+
+    private def parallel_release_on_collect? : Bool
+      @release_warm_this_collect && @parallel_release_on_collect
     end
 
     # Post-STW sweep: freelist locks serialize alloc into the class being

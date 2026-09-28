@@ -824,6 +824,9 @@ module GC
     # that can run a fiber has a recorded SP. `0` keeps the lag window for all
     # of them (A/B, and the escape hatch).
     heap.parked_fiber_sp = false if env_flag_zero?("GCRY_PARKED_FIBER_SP")
+    # `GC.collect`, idle and emergency collections make a multi-mutator heap's
+    # empty chunks dormant; `0` keeps them mapped (A/B, escape hatch).
+    heap.parallel_release_on_collect = false if env_flag_zero?("GCRY_PARALLEL_RELEASE_ON_COLLECT")
     # Darwin: prove a large range untouched from the VM object's resident count
     # instead of asking about every page (`platform/darwin_low_water.cr`).
     # `0` restores the per-page query everywhere — A/B, and the red arm of

@@ -15,6 +15,10 @@
 #   --expect-dormant   the opt-in must have made empties dormant
 #   --expect-inert     the red arm: run with GCRY_EMPTY_CHUNK_RETAIN=0, the
 #                      pre-fix budget, and nothing may be dormant
+#   --ordinary         collect with `Heap#collect` (an ordinary major) rather
+#                      than `GC.collect`, which since 2026-09-28 makes the
+#                      empties dormant by default (`GCRY_PARALLEL_RELEASE_ON_COLLECT`);
+#                      the opt-in arms need it to show the opt-in's own effect
 #   --expect-footprint-drop  macOS: the collection must take at least half of
 #                      the dormant bytes out of `phys_footprint`
 #                      (`MADV_FREE_REUSABLE`)
@@ -61,6 +65,7 @@ expect_dormant = ARGV.includes?("--expect-dormant")
 expect_inert = ARGV.includes?("--expect-inert")
 expect_fp_drop = ARGV.includes?("--expect-footprint-drop")
 expect_fp_kept = ARGV.includes?("--expect-footprint-kept")
+ordinary = ARGV.includes?("--ordinary")
 
 fds = uninitialized Int32[2]
 raise "pipe() failed" unless LibC.pipe(fds) == 0
@@ -104,24 +109,23 @@ end
 peak = burst_and_drop
 peak_fp = footprint_kib
 scrub_stack(64)
-GC.collect
-GC.collect
+2.times { ordinary ? HEAP.collect : GC.collect }
 after = rss_kib
 after_fp = footprint_kib
 dormant = HEAP.dormant_chunk_bytes
 empty = HEAP.fully_free_chunk_bytes
 
-puts "parallel_dormant: threads=#{threads} retain=#{HEAP.empty_chunk_retain // 1024}KiB"
+puts "parallel_dormant: threads=#{threads} retain=#{HEAP.empty_chunk_retain // 1024}KiB #{ordinary ? "ordinary collect" : "GC.collect"}"
 puts "  RSS peak #{peak // 1024} MB, after collect #{after // 1024} MB; empty chunks #{empty >> 20} MB, dormant #{dormant >> 20} MB"
 if (pf = peak_fp) && (af = after_fp)
   puts "  footprint peak #{pf // 1024} MB, after collect #{af // 1024} MB"
 end
 if expect_dormant && dormant == 0
-  puts "FAIL: GCRY_PARALLEL_DORMANT=1 made no empty chunk dormant (#{empty >> 20} MB of them kept mapped) — the opt-in is inert"
+  puts "FAIL: no empty chunk went dormant (#{empty >> 20} MB of them kept mapped) — #{ordinary ? "the opt-in is inert" : "GC.collect gave nothing back"}"
   exit 1
 end
 if expect_inert && dormant != 0
-  puts "FAIL: red arm: with a zero budget #{dormant >> 20} MB still went dormant, so this gate cannot tell the opt-in working from not"
+  puts "FAIL: red arm: #{dormant >> 20} MB still went dormant, so this gate cannot tell the release working from not"
   exit 1
 end
 if expect_fp_drop || expect_fp_kept
