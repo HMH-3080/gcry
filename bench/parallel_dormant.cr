@@ -89,14 +89,22 @@ end
 abort "only #{threads} threads — not multi-mutator, nothing to measure" if threads <= 2
 
 # A burst of small objects — small-size-class chunks, all empty once dropped —
-# built and dropped inside a frame of its own, then that stack region is
-# overwritten, so no conservative word keeps it alive (a first version held
-# 60 MB of it through `burst = nil`).
+# built and dropped on a thread of its own, which is joined before anything
+# collects. A first version held 60 MB of it through `burst = nil`; the next
+# built it in a frame of main's and overwrote that stack region afterwards,
+# which held until 2026-09-28, when a change to the marker's code (no change
+# to what it marks) left macOS retaining the whole burst on every run: 60 MB
+# after the collect, 4 MB of empty chunks. One conservative word naming the
+# outer array keeps all of it, and main's frames and registers are where
+# such a word lives. The burst thread's are gone once it is joined.
+# A plain thread has no execution context, so no IO: the peak is read on main
+# after the join, with the burst still resident because nothing has
+# collected it.
 @[NoInline]
-def burst_and_drop : UInt64
+def burst_and_drop : Int32
   keep = Array(Array(Int64)).new
   (64 * 1024 * 1024 // 96).times { keep << Array(Int64).new(4, 0_i64) }
-  rss_kib
+  keep.size
 end
 
 @[NoInline]
@@ -106,9 +114,13 @@ def scrub_stack(depth : Int32) : Int32
   depth > 0 ? scrub_stack(depth - 1) &+ pad[depth & 511].to_i32 : 0
 end
 
-peak = burst_and_drop
+Thread.new { burst_and_drop }.join
+peak = rss_kib
 peak_fp = footprint_kib
 scrub_stack(64)
+# Which root seeded what. A word naming the outer array's 5.6 MB buffer shows
+# up in its source's bytes; one naming the 24-byte array object barely does.
+HEAP.live_attr_roots = true
 2.times { ordinary ? HEAP.collect : GC.collect }
 after = rss_kib
 after_fp = footprint_kib
@@ -119,6 +131,16 @@ puts "parallel_dormant: threads=#{threads} retain=#{HEAP.empty_chunk_retain // 1
 puts "  RSS peak #{peak // 1024} MB, after collect #{after // 1024} MB; empty chunks #{empty >> 20} MB, dormant #{dormant >> 20} MB"
 if (pf = peak_fp) && (af = after_fp)
   puts "  footprint peak #{pf // 1024} MB, after collect #{af // 1024} MB"
+end
+puts "  seeded by stack #{HEAP.first_mark_stack_bytes >> 10} KiB, parked #{HEAP.first_mark_parked_bytes >> 10} KiB, " \
+     "thread #{HEAP.first_mark_thread_bytes >> 10} KiB, static #{HEAP.first_mark_static_bytes >> 10} KiB"
+# The burst is 64 MiB of garbage. With less than a quarter of it in empty
+# chunks, something held it, and whether those chunks go dormant is not what
+# failed.
+if empty < 16_u64 << 20
+  puts "FAIL: the burst was retained: #{after // 1024} MB resident after the collect and only #{empty >> 20} MB of empty chunks. " \
+       "A root held the dropped objects (see the seeds above); this says nothing about the release"
+  exit 1
 end
 if expect_dormant && dormant == 0
   puts "FAIL: no empty chunk went dormant (#{empty >> 20} MB of them kept mapped) — #{ordinary ? "the opt-in is inert" : "GC.collect gave nothing back"}"
