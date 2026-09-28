@@ -41,10 +41,12 @@ STAMP     = 0x1D6E_6A2C_0000_0000_u64
 OBJ_BYTES =                      2048
 HEAP_GOAL = 160_u64 * 1024 * 1024
 STALL_MS  = "50"
-# The red arm faults or loses objects in ~3 runs of 4 (6 of 8 measured at
-# 50 ms): a stall-driven race, not a construction, so it must go red in at
-# least one of RED_RUNS (all clean at that rate: ~0.1%). The shipped arm must
-# be clean in every run.
+# The red arm faults or loses objects in ~11 runs of 12 at 50 ms: a
+# stall-driven race, not a construction, so it must go red in at least one of
+# RED_RUNS. The shipped arm must be clean in every run. `GCRY_POISON_FREED`
+# poisons the old index array before it is freed. Without that, what the
+# reader saw was glibc's choice: 5, 2 and 0 of 5 red on three CI runners
+# (2026-09-28), because a block merged into the arena's top keeps its entries.
 RUNS     = 3
 RED_RUNS = 5
 

@@ -97,3 +97,27 @@ allocated and carry its stamp.
 | shipped (allocate, copy, publish, free) | 13 of 13 clean (3 in the gate, 10 more), 900–1 600 collections each |
 | `GCRY_INDEX_GROW_FREE_FIRST=1` (free, then publish — `realloc` when it moves) | 6 of 8 faulted; required ≥ 1 of 5 |
 | calling `realloc` itself, 20 ms | 1 of 3 (it grows in place when it can) — why the red arm frees directly |
+
+## 2026-09-28: the red arm depended on glibc
+
+On CI the red arm went red in 2 of 5 (`36410059610`), in 5 of 5
+(`36446344875`), and then in **0 of 5** (`36460850290`), which failed the
+gate. The harness reaches the window either way. What differed was whether a
+reader of the freed array saw anything wrong. glibc rewrites the first words
+of a block it bins (tcache link and key, or arena pointers). A block that it
+merges into the arena's top instead keeps every entry intact, so reads through
+it stay correct.
+
+`index_free_old` now fills the old array with `POISON_WORD` before freeing it
+under `GCRY_POISON_FREED`, as every freed gcry block already is. It does this
+on both paths. Measured locally, concurrently, 12 runs per arm:
+
+| arm | before | after |
+|---|---:|---:|
+| free-first (red) | 9/12 red | **11/12 red** |
+| shipped | — | 0/12 red |
+
+A red child now dies either on the poison ("gcry's freed-block poison … is in
+the faulting context") or on glibc's safe-linking word. The latter happens
+where tcache rewrote a small array's head after the poison. The one clean red
+run is a growth no collection landed in.

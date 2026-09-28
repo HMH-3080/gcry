@@ -3373,13 +3373,28 @@ module Gcry
       raise OutOfMemoryError.new("chunk index allocation failed") if fresh.null?
       fresh.copy_from(old, @chunk_index_count) unless old.null?
       if @index_grow_free_first && !old.null?
-        LibC.free(old.as(Void*))
+        index_free_old(old, @chunk_index_cap)
         old = Pointer(ChunkHeader*).null
       end
       index_grow_test_stall
       Atomic::Ops.store(pointerof(@chunk_index), fresh, :release, true)
+      old_cap = @chunk_index_cap
       @chunk_index_cap = new_cap
-      LibC.free(old.as(Void*)) unless old.null?
+      index_free_old(old, old_cap) unless old.null?
+    end
+
+    # Under `GCRY_POISON_FREED` the old array is poisoned before it is freed,
+    # as a freed heap block's payload is. Otherwise what a reader of freed
+    # memory sees is up to glibc: a block binned there has its first words
+    # rewritten, but one merged into the arena's top keeps every entry intact
+    # and reads correctly. That made the red arm of `make index-grow-race` a
+    # property of the machine: 5 of 5 on one CI runner, 0 of 5 on the next
+    # (2026-09-28). With the poison, any read through it faults or misses.
+    private def index_free_old(old : ChunkHeader**, cap : Int32) : Nil
+      if @poison_freed
+        old.as(UInt64*).fill(cap, POISON_WORD)
+      end
+      LibC.free(old.as(Void*))
     end
 
     private def index_grow_test_stall : Nil
