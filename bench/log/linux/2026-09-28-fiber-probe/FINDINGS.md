@@ -63,3 +63,26 @@ stw-mt-property-test-short`, `scheduler-roots`, `nested-spawn-uaf`,
 `ec-queue-audit`, `stw-lag-pause`, `thread-storm-short`,
 `pattern-fuzz-short` and `dead-stack-root`, plus the Darwin cross-compile
 and `make windows-typecheck`.
+
+## Tried after it, and not shipped
+
+Both were measured at EC4 with the same A/B, 9 rounds, while a stress
+campaign loaded the host.
+
+- **One snapshot of the thread SPs per fiber walk.** `fiber_stack_sp_scan_low`
+  asks every thread for its SP again for every fiber: a linear search of
+  the STW slot table and a `"SYSMON"` string comparison per thread. Taking
+  them once per walk saved **6 µs of roots, lower in 7/9**. The null arm
+  moved 2 µs.
+- **Try the thread's `current_fiber` before the fiber list** in
+  `scan_stack_containing_sp`, which walks every fiber for every thread.
+  This saved **2 µs of the stacks phase, 7/9**. `scan_all_fiber_roots` has
+  just walked the same list, so it is warm and the walk is cheap.
+
+Neither is worth its code. What is left in EC4's roots and stacks is
+reading the stacks themselves.
+
+The `fiber_scan_from_guard` count on `/gc-stats` is cumulative, not per
+collection. Reading it as per-collection suggested 56 whole-stack scans a
+collection. An instrumented build found about one, SYSMON's main fiber, as
+documented.
