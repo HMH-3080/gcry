@@ -70,4 +70,5 @@ Local gates, all green: `stw-mt-property-test-short`, `dormant-flush-race`,
 
 Campaign lanes in the default configuration, built from `a7debe4` (the
 `stw_mt` lanes collect through `GC.collect`, so every one of their
-collections takes the new path): PENDING.
+collections takes the new path): **2118 runs, 10.1 lane-hours, 0 failures, 0 timeouts**
+(`campaign-summary.md`).
