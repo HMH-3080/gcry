@@ -229,7 +229,7 @@ module Gcry
                       # Drop FREE bytes that leave the heap (reclaim_small /
                       # freelist_reserve already adjust; skip full recalc).
                       free_bytes_sub(free_payload) if free_payload > 0
-                      @heap_size -= mapped if @heap_size >= mapped
+                      @heap_size = sat_sub(@heap_size, mapped)
                       @bytes_reclaimed_since_gc += mapped
                       @released_chunk_bytes += mapped
                       if ChunkHeader.nursery?(chunk)

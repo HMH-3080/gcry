@@ -1,0 +1,382 @@
+gcry: GCRY_MOSTLY_EMPTY=1 is ignored on the headerless layout (the compile default): free-page release walks freelist chunks only, and a headerless heap has none. Rebuild with -Dgcry_block_headers and set GCRY_BITMAP_ALLOC=0 to run it, at a higher RSS than this layout reaches without it (docs/HARDENING.md)
+
+bench: child exceeded 120s and was killed
+
+--- capture
+--- stall capture: pid 2808797, 9 thread(s)
+task 2808797 dormant_flush state=R wchan=0
+task 2808798 SYSMON state=S wchan=hrtimer_nanosleep
+task 2808799 gcry-watch state=S wchan=hrtimer_nanosleep
+task 2808800 gc-idle state=S wchan=hrtimer_nanosleep
+task 2808801 dormant_flush state=R wchan=0
+task 2808802 dormant_flush state=R wchan=0
+task 2808803 dormant_flush state=R wchan=0
+task 2808804 dormant_flush state=R wchan=0
+task 2808805 dormant_flush state=R wchan=0
+--- gdb, attached through task 2808797
+[New LWP 2808805]
+[New LWP 2808804]
+[New LWP 2808803]
+[New LWP 2808802]
+[New LWP 2808801]
+[New LWP 2808800]
+[New LWP 2808799]
+[New LWP 2808798]
+
+This GDB supports auto-downloading debuginfo from the following URLs:
+  <https://debuginfod.ubuntu.com>
+Enable debuginfod for this session? (y or [n]) [answered N; input not from terminal]
+Debuginfod has been disabled.
+To make this setting permanent, add 'set debuginfod enabled off' to .gdbinit.
+[Thread debugging using libthread_db enabled]
+Using host libthread_db library "/usr/lib/x86_64-linux-gnu/libthread_db.so.1".
+damaged? () at /home/naruto/playground/gcry/bench/dormant_flush_race.cr:183
+183	      i += 64
+  Id   Target Id                                           Frame 
+* 1    Thread 0x758972ae67c0 (LWP 2808797) "dormant_flush" damaged? () at /home/naruto/playground/gcry/bench/dormant_flush_race.cr:183
+  2    Thread 0x758967fff6c0 (LWP 2808805) "dormant_flush" 0x00005979f565f942 in pause () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/intrinsics.cr:191
+  3    Thread 0x75896ce5a6c0 (LWP 2808804) "dormant_flush" 0x00005979f5656eef in get () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/atomic.cr:330
+  4    Thread 0x75896d65b6c0 (LWP 2808803) "dormant_flush" 0x00005979f565f942 in pause () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/intrinsics.cr:191
+  5    Thread 0x75896de5c6c0 (LWP 2808802) "dormant_flush" 0x00005979f565f942 in pause () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/intrinsics.cr:191
+  6    Thread 0x75896e65d6c0 (LWP 2808801) "dormant_flush" relaxed? () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/atomic.cr:28
+  7    Thread 0x75896f0fe6c0 (LWP 2808800) "gc-idle"       __syscall_cancel_arch () at ../sysdeps/unix/sysv/linux/x86_64/syscall_cancel.S:56
+  8    Thread 0x75896f8ff6c0 (LWP 2808799) "gcry-watch"    __syscall_cancel_arch () at ../sysdeps/unix/sysv/linux/x86_64/syscall_cancel.S:56
+  9    Thread 0x758970fff6c0 (LWP 2808798) "SYSMON"        __syscall_cancel_arch () at ../sysdeps/unix/sysv/linux/x86_64/syscall_cancel.S:56
+
+Thread 9 (Thread 0x758970fff6c0 (LWP 2808798) "SYSMON"):
+#0  __syscall_cancel_arch () at ../sysdeps/unix/sysv/linux/x86_64/syscall_cancel.S:56
+#1  0x00007589728a030c in __internal_syscall_cancel (a1=a1@entry=0, a2=a2@entry=0, a3=<optimized out>, a4=<optimized out>, a5=a5@entry=0, a6=a6@entry=0, nr=230) at ./nptl/cancellation.c:49
+#2  0x00007589728f5af2 in __GI___clock_nanosleep (clock_id=<optimized out>, clock_id@entry=0, flags=flags@entry=0, req=<optimized out>, rem=<optimized out>) at ../sysdeps/unix/sysv/linux/clock_nanosleep.c:48
+#3  0x0000758972903707 in __GI___nanosleep (req=<optimized out>, rem=<optimized out>) at ../sysdeps/unix/sysv/linux/nanosleep.c:25
+#4  0x00005979f56e7e7b in sleep () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/crystal/system/unix/pthread.cr:111
+#5  0x00005979f56d70ed in sleep () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/crystal/system/thread.cr:197
+#6  0x00005979f57b0f8b in run_loop () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/fiber/execution_context/monitor.cr:55
+#7  0x00005979f558d159 in -> () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/fiber/execution_context/monitor.cr:19
+#8  0x00005979f56d67f2 in start () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/crystal/system/thread.cr:249
+#9  0x00005979f56e7d97 in thread_proc () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/crystal/system/unix/pthread.cr:47
+#10 0x00005979f5586856 in -> () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/crystal/system/unix/pthread.cr:22
+#11 0x00007589728a3dfa in start_thread (arg=<optimized out>) at ./nptl/pthread_create.c:454
+#12 0x00007589729375cc in __GI___clone3 () at ../sysdeps/unix/sysv/linux/x86_64/clone3.S:78
+
+Thread 8 (Thread 0x75896f8ff6c0 (LWP 2808799) "gcry-watch"):
+#0  __syscall_cancel_arch () at ../sysdeps/unix/sysv/linux/x86_64/syscall_cancel.S:56
+#1  0x00007589728a030c in __internal_syscall_cancel (a1=a1@entry=0, a2=a2@entry=0, a3=<optimized out>, a4=<optimized out>, a5=a5@entry=0, a6=a6@entry=0, nr=230) at ./nptl/cancellation.c:49
+#2  0x00007589728f5af2 in __GI___clock_nanosleep (clock_id=<optimized out>, clock_id@entry=0, flags=flags@entry=0, req=<optimized out>, rem=<optimized out>) at ../sysdeps/unix/sysv/linux/clock_nanosleep.c:48
+#3  0x0000758972903707 in __GI___nanosleep (req=<optimized out>, rem=<optimized out>) at ../sysdeps/unix/sysv/linux/nanosleep.c:25
+#4  0x00005979f56eb01e in watch_loop () at /home/naruto/playground/gcry/src/gcry/stw_watchdog.cr:227
+#5  0x00005979f55867c6 in gcry_stw_watchdog_main () at /home/naruto/playground/gcry/src/gcry/stw_watchdog.cr:35
+#6  0x00005979f55867b6 in -> () at /home/naruto/playground/gcry/src/gcry/stw_watchdog.cr:186
+#7  0x00007589728a3dfa in start_thread (arg=<optimized out>) at ./nptl/pthread_create.c:454
+#8  0x00007589729375cc in __GI___clone3 () at ../sysdeps/unix/sysv/linux/x86_64/clone3.S:78
+
+Thread 7 (Thread 0x75896f0fe6c0 (LWP 2808800) "gc-idle"):
+#0  __syscall_cancel_arch () at ../sysdeps/unix/sysv/linux/x86_64/syscall_cancel.S:56
+#1  0x00007589728a030c in __internal_syscall_cancel (a1=a1@entry=0, a2=a2@entry=0, a3=<optimized out>, a4=<optimized out>, a5=a5@entry=0, a6=a6@entry=0, nr=230) at ./nptl/cancellation.c:49
+#2  0x00007589728f5af2 in __GI___clock_nanosleep (clock_id=<optimized out>, clock_id@entry=0, flags=flags@entry=0, req=<optimized out>, rem=<optimized out>) at ../sysdeps/unix/sysv/linux/clock_nanosleep.c:48
+#3  0x0000758972903707 in __GI___nanosleep (req=<optimized out>, rem=<optimized out>) at ../sysdeps/unix/sysv/linux/nanosleep.c:25
+#4  0x00005979f56e3f98 in loop_forever () at /home/naruto/playground/gcry/src/gcry/idle_release.cr:194
+#5  0x00005979f558a826 in -> () at /home/naruto/playground/gcry/src/gcry/idle_release.cr:135
+#6  0x00005979f56d67df in start () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/crystal/system/thread.cr:249
+#7  0x00005979f56e7d97 in thread_proc () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/crystal/system/unix/pthread.cr:47
+#8  0x00005979f5586856 in -> () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/crystal/system/unix/pthread.cr:22
+#9  0x00007589728a3dfa in start_thread (arg=<optimized out>) at ./nptl/pthread_create.c:454
+#10 0x00007589729375cc in __GI___clone3 () at ../sysdeps/unix/sysv/linux/x86_64/clone3.S:78
+
+Thread 6 (Thread 0x75896e65d6c0 (LWP 2808801) "dormant_flush"):
+#0  relaxed? () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/atomic.cr:28
+#1  0x00005979f5656eb6 in get () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/atomic.cr:331
+#2  0x00005979f5656c91 in lock () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/crystal/spin_lock.cr:11
+#3  0x00005979f564269d in alloc_old_small () at /home/naruto/playground/gcry/src/gcry/tlab.cr:149
+#4  0x00005979f55e1e99 in allocate () at /home/naruto/playground/gcry/src/gcry/heap.cr:1133
+#5  0x00005979f55dec8b in malloc () at /home/naruto/playground/gcry/src/gcry/heap.cr:556
+#6  0x00005979f55b799e in malloc () at /home/naruto/playground/gcry/src/gcry/gc_override.cr:1484
+#7  0x00005979f5584e4e in __crystal_malloc64 () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/gc.cr:24
+#8  0x00005979f5653b8c in trim_large_cache () at /home/naruto/playground/gcry/src/gcry/heap.cr:2335
+#9  0x00005979f5653614 in free_owned? () at /home/naruto/playground/gcry/src/gcry/heap.cr:743
+#10 0x00005979f55b7c85 in free () at /home/naruto/playground/gcry/src/gcry/gc_override.cr:1551
+#11 0x00005979f558edd3 in -> () at /home/naruto/playground/gcry/bench/dormant_flush_race.cr:227
+#12 0x00005979f56d67f2 in start () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/crystal/system/thread.cr:249
+#13 0x00005979f56e7d97 in thread_proc () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/crystal/system/unix/pthread.cr:47
+#14 0x00005979f5586856 in -> () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/crystal/system/unix/pthread.cr:22
+#15 0x00007589728a3dfa in start_thread (arg=<optimized out>) at ./nptl/pthread_create.c:454
+#16 0x00007589729375cc in __GI___clone3 () at ../sysdeps/unix/sysv/linux/x86_64/clone3.S:78
+
+Thread 5 (Thread 0x75896de5c6c0 (LWP 2808802) "dormant_flush"):
+#0  0x00005979f565f942 in pause () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/intrinsics.cr:191
+#1  0x00005979f5656c9b in lock () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/crystal/spin_lock.cr:11
+#2  0x00005979f564269d in alloc_old_small () at /home/naruto/playground/gcry/src/gcry/tlab.cr:149
+#3  0x00005979f55e1e99 in allocate () at /home/naruto/playground/gcry/src/gcry/heap.cr:1133
+#4  0x00005979f55dec8b in malloc () at /home/naruto/playground/gcry/src/gcry/heap.cr:556
+#5  0x00005979f55b799e in malloc () at /home/naruto/playground/gcry/src/gcry/gc_override.cr:1484
+#6  0x00005979f5584e4e in __crystal_malloc64 () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/gc.cr:24
+#7  0x00005979f5653b8c in trim_large_cache () at /home/naruto/playground/gcry/src/gcry/heap.cr:2335
+#8  0x00005979f5653614 in free_owned? () at /home/naruto/playground/gcry/src/gcry/heap.cr:743
+#9  0x00005979f55b7c85 in free () at /home/naruto/playground/gcry/src/gcry/gc_override.cr:1551
+#10 0x00005979f558edd3 in -> () at /home/naruto/playground/gcry/bench/dormant_flush_race.cr:227
+#11 0x00005979f56d67f2 in start () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/crystal/system/thread.cr:249
+#12 0x00005979f56e7d97 in thread_proc () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/crystal/system/unix/pthread.cr:47
+#13 0x00005979f5586856 in -> () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/crystal/system/unix/pthread.cr:22
+#14 0x00007589728a3dfa in start_thread (arg=<optimized out>) at ./nptl/pthread_create.c:454
+#15 0x00007589729375cc in __GI___clone3 () at ../sysdeps/unix/sysv/linux/x86_64/clone3.S:78
+
+Thread 4 (Thread 0x75896d65b6c0 (LWP 2808803) "dormant_flush"):
+#0  0x00005979f565f942 in pause () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/intrinsics.cr:191
+#1  0x00005979f5656c9b in lock () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/crystal/spin_lock.cr:11
+#2  0x00005979f564269d in alloc_old_small () at /home/naruto/playground/gcry/src/gcry/tlab.cr:149
+#3  0x00005979f55e1e99 in allocate () at /home/naruto/playground/gcry/src/gcry/heap.cr:1133
+#4  0x00005979f55dec8b in malloc () at /home/naruto/playground/gcry/src/gcry/heap.cr:556
+#5  0x00005979f55b799e in malloc () at /home/naruto/playground/gcry/src/gcry/gc_override.cr:1484
+#6  0x00005979f5584e4e in __crystal_malloc64 () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/gc.cr:24
+#7  0x00005979f55b5545 in new () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/array.cr:112
+#8  0x00005979f55b0217 in unwind () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/exception/call_stack/libunwind.cr:41
+#9  0x00005979f55b01de in initialize () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/exception/call_stack.cr:39
+#10 0x00005979f55b01b8 in new () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/exception/call_stack.cr:39
+#11 0x00005979f55861d7 in raise () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/raise.cr:242
+#12 0x00005979f55859fe in __crystal_raise_overflow () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/raise.cr:296
+#13 0x00005979f5648ecc in bitmap_revive_dormant () at /home/naruto/playground/gcry/src/gcry/bitmap_alloc.cr:999
+#14 0x00005979f5648665 in bitmap_take_pool_chunk () at /home/naruto/playground/gcry/src/gcry/bitmap_alloc.cr:895
+#15 0x00005979f5646f37 in bitmap_refill_pool () at /home/naruto/playground/gcry/src/gcry/bitmap_alloc.cr:780
+#16 0x00005979f56464fe in bitmap_alloc_locked () at /home/naruto/playground/gcry/src/gcry/bitmap_alloc.cr:667
+#17 0x00005979f5645fbb in alloc_old_small_locked () at /home/naruto/playground/gcry/src/gcry/heap.cr:1365
+#18 0x00005979f56426bf in alloc_old_small () at /home/naruto/playground/gcry/src/gcry/heap.cr:1330
+#19 0x00005979f55e1e99 in allocate () at /home/naruto/playground/gcry/src/gcry/heap.cr:1133
+#20 0x00005979f55dec8b in malloc () at /home/naruto/playground/gcry/src/gcry/heap.cr:556
+#21 0x00005979f55b799e in malloc () at /home/naruto/playground/gcry/src/gcry/gc_override.cr:1484
+#22 0x00005979f5584e4e in __crystal_malloc64 () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/gc.cr:24
+#23 0x00005979f5653b8c in trim_large_cache () at /home/naruto/playground/gcry/src/gcry/heap.cr:2335
+#24 0x00005979f5653614 in free_owned? () at /home/naruto/playground/gcry/src/gcry/heap.cr:743
+#25 0x00005979f55b7c85 in free () at /home/naruto/playground/gcry/src/gcry/gc_override.cr:1551
+#26 0x00005979f558edd3 in -> () at /home/naruto/playground/gcry/bench/dormant_flush_race.cr:227
+#27 0x00005979f56d67f2 in start () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/crystal/system/thread.cr:249
+#28 0x00005979f56e7d97 in thread_proc () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/crystal/system/unix/pthread.cr:47
+#29 0x00005979f5586856 in -> () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/crystal/system/unix/pthread.cr:22
+#30 0x00007589728a3dfa in start_thread (arg=<optimized out>) at ./nptl/pthread_create.c:454
+#31 0x00007589729375cc in __GI___clone3 () at ../sysdeps/unix/sysv/linux/x86_64/clone3.S:78
+
+Thread 3 (Thread 0x75896ce5a6c0 (LWP 2808804) "dormant_flush"):
+#0  0x00005979f5656eef in get () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/atomic.cr:330
+#1  0x00005979f5656c91 in lock () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/crystal/spin_lock.cr:11
+#2  0x00005979f564269d in alloc_old_small () at /home/naruto/playground/gcry/src/gcry/tlab.cr:149
+#3  0x00005979f55e1e99 in allocate () at /home/naruto/playground/gcry/src/gcry/heap.cr:1133
+#4  0x00005979f55dec8b in malloc () at /home/naruto/playground/gcry/src/gcry/heap.cr:556
+#5  0x00005979f55b799e in malloc () at /home/naruto/playground/gcry/src/gcry/gc_override.cr:1484
+#6  0x00005979f5584e4e in __crystal_malloc64 () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/gc.cr:24
+#7  0x00005979f5653b8c in trim_large_cache () at /home/naruto/playground/gcry/src/gcry/heap.cr:2335
+#8  0x00005979f5653614 in free_owned? () at /home/naruto/playground/gcry/src/gcry/heap.cr:743
+#9  0x00005979f55b7c85 in free () at /home/naruto/playground/gcry/src/gcry/gc_override.cr:1551
+#10 0x00005979f558edd3 in -> () at /home/naruto/playground/gcry/bench/dormant_flush_race.cr:227
+#11 0x00005979f56d67f2 in start () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/crystal/system/thread.cr:249
+#12 0x00005979f56e7d97 in thread_proc () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/crystal/system/unix/pthread.cr:47
+#13 0x00005979f5586856 in -> () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/crystal/system/unix/pthread.cr:22
+#14 0x00007589728a3dfa in start_thread (arg=<optimized out>) at ./nptl/pthread_create.c:454
+#15 0x00007589729375cc in __GI___clone3 () at ../sysdeps/unix/sysv/linux/x86_64/clone3.S:78
+
+Thread 2 (Thread 0x758967fff6c0 (LWP 2808805) "dormant_flush"):
+#0  0x00005979f565f942 in pause () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/intrinsics.cr:191
+#1  0x00005979f5656c9b in lock () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/crystal/spin_lock.cr:11
+#2  0x00005979f562903c in sweep () at /home/naruto/playground/gcry/src/gcry/collect_sweep.cr:111
+#3  0x00005979f55e7344 in run_collection_body () at /home/naruto/playground/gcry/src/gcry/collect.cr:2710
+#4  0x00005979f55e2c42 in run_collection () at /home/naruto/playground/gcry/src/gcry/collect.cr:2400
+#5  0x00005979f565535a in collect:release_warm () at /home/naruto/playground/gcry/src/gcry/collect.cr:1798
+#6  0x00005979f55b7d3a in collect () at /home/naruto/playground/gcry/src/gcry/gc_override.cr:1524
+#7  0x00005979f558eed4 in -> () at /home/naruto/playground/gcry/bench/dormant_flush_race.cr:269
+#8  0x00005979f56d67df in start () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/crystal/system/thread.cr:249
+#9  0x00005979f56e7d97 in thread_proc () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/crystal/system/unix/pthread.cr:47
+#10 0x00005979f5586856 in -> () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/crystal/system/unix/pthread.cr:22
+#11 0x00007589728a3dfa in start_thread (arg=<optimized out>) at ./nptl/pthread_create.c:454
+#12 0x00007589729375cc in __GI___clone3 () at ../sysdeps/unix/sysv/linux/x86_64/clone3.S:78
+
+Thread 1 (Thread 0x758972ae67c0 (LWP 2808797) "dormant_flush"):
+#0  damaged? () at /home/naruto/playground/gcry/bench/dormant_flush_race.cr:183
+#1  0x00005979f5583618 in __crystal_main () at /home/naruto/playground/gcry/bench/dormant_flush_race.cr:293
+#2  0x00005979f5753426 in main_user_code () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/crystal/main.cr:129
+#3  0x00005979f575336f in main () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/crystal/main.cr:115
+#4  0x00005979f558ce3b in main () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/crystal/system/unix/main.cr:9
+[Inferior 1 (process 2808797) detached]
+--- innermost frames with arguments and locals
+[New LWP 2808805]
+[New LWP 2808804]
+[New LWP 2808803]
+[New LWP 2808802]
+[New LWP 2808801]
+[New LWP 2808800]
+[New LWP 2808799]
+[New LWP 2808798]
+
+This GDB supports auto-downloading debuginfo from the following URLs:
+  <https://debuginfod.ubuntu.com>
+Enable debuginfod for this session? (y or [n]) [answered N; input not from terminal]
+Debuginfod has been disabled.
+To make this setting permanent, add 'set debuginfod enabled off' to .gdbinit.
+[Thread debugging using libthread_db enabled]
+Using host libthread_db library "/usr/lib/x86_64-linux-gnu/libthread_db.so.1".
+damaged? () at /home/naruto/playground/gcry/bench/dormant_flush_race.cr:183
+183	      i += 64
+
+Thread 9 (Thread 0x758970fff6c0 (LWP 2808798) "SYSMON"):
+#0  __syscall_cancel_arch () at ../sysdeps/unix/sysv/linux/x86_64/syscall_cancel.S:56
+No locals.
+#1  0x00007589728a030c in __internal_syscall_cancel (a1=a1@entry=0, a2=a2@entry=0, a3=<optimized out>, a4=<optimized out>, a5=a5@entry=0, a6=a6@entry=0, nr=230) at ./nptl/cancellation.c:49
+        result = <optimized out>
+        pd = <optimized out>
+        ch = <optimized out>
+#2  0x00007589728f5af2 in __GI___clock_nanosleep (clock_id=<optimized out>, clock_id@entry=0, flags=flags@entry=0, req=<optimized out>, rem=<optimized out>) at ../sysdeps/unix/sysv/linux/clock_nanosleep.c:48
+        r = <optimized out>
+#3  0x0000758972903707 in __GI___nanosleep (req=<optimized out>, rem=<optimized out>) at ../sysdeps/unix/sysv/linux/nanosleep.c:25
+        ret = <optimized out>
+#4  0x00005979f56e7e7b in sleep () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/crystal/system/unix/pthread.cr:111
+No locals.
+#5  0x00005979f56d70ed in sleep () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/crystal/system/thread.cr:197
+No locals.
+#6  0x00005979f57b0f8b in run_loop () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/fiber/execution_context/monitor.cr:55
+No locals.
+#7  0x00005979f558d159 in -> () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/fiber/execution_context/monitor.cr:19
+No locals.
+
+Thread 8 (Thread 0x75896f8ff6c0 (LWP 2808799) "gcry-watch"):
+#0  __syscall_cancel_arch () at ../sysdeps/unix/sysv/linux/x86_64/syscall_cancel.S:56
+No locals.
+#1  0x00007589728a030c in __internal_syscall_cancel (a1=a1@entry=0, a2=a2@entry=0, a3=<optimized out>, a4=<optimized out>, a5=a5@entry=0, a6=a6@entry=0, nr=230) at ./nptl/cancellation.c:49
+        result = <optimized out>
+        pd = <optimized out>
+        ch = <optimized out>
+#2  0x00007589728f5af2 in __GI___clock_nanosleep (clock_id=<optimized out>, clock_id@entry=0, flags=flags@entry=0, req=<optimized out>, rem=<optimized out>) at ../sysdeps/unix/sysv/linux/clock_nanosleep.c:48
+        r = <optimized out>
+#3  0x0000758972903707 in __GI___nanosleep (req=<optimized out>, rem=<optimized out>) at ../sysdeps/unix/sysv/linux/nanosleep.c:25
+        ret = <optimized out>
+#4  0x00005979f56eb01e in watch_loop () at /home/naruto/playground/gcry/src/gcry/stw_watchdog.cr:227
+No locals.
+#5  0x00005979f55867c6 in gcry_stw_watchdog_main () at /home/naruto/playground/gcry/src/gcry/stw_watchdog.cr:35
+No locals.
+#6  0x00005979f55867b6 in -> () at /home/naruto/playground/gcry/src/gcry/stw_watchdog.cr:186
+No locals.
+#7  0x00007589728a3dfa in start_thread (arg=<optimized out>) at ./nptl/pthread_create.c:454
+        ret = <optimized out>
+        pd = <optimized out>
+        out = <optimized out>
+        unwind_buf = {cancel_jmp_buf = {{jmp_buf = {129233142675136, 3374799679701507797, 129233142675136, 140736889906768, 25, 140736889907031, 3374799679707799253, 3374753467630870229}, mask_was_saved = 0}}, priv = {pad = {0x0, 0x0, 0x0, 0x0}, data = {prev = 0x0, cleanup = 0x0, canceltype = 0}}}
+        not_first_call = <optimized out>
+        prevstate = <optimized out>
+
+Thread 7 (Thread 0x75896f0fe6c0 (LWP 2808800) "gc-idle"):
+#0  __syscall_cancel_arch () at ../sysdeps/unix/sysv/linux/x86_64/syscall_cancel.S:56
+No locals.
+#1  0x00007589728a030c in __internal_syscall_cancel (a1=a1@entry=0, a2=a2@entry=0, a3=<optimized out>, a4=<optimized out>, a5=a5@entry=0, a6=a6@entry=0, nr=230) at ./nptl/cancellation.c:49
+        result = <optimized out>
+        pd = <optimized out>
+        ch = <optimized out>
+#2  0x00007589728f5af2 in __GI___clock_nanosleep (clock_id=<optimized out>, clock_id@entry=0, flags=flags@entry=0, req=<optimized out>, rem=<optimized out>) at ../sysdeps/unix/sysv/linux/clock_nanosleep.c:48
+        r = <optimized out>
+#3  0x0000758972903707 in __GI___nanosleep (req=<optimized out>, rem=<optimized out>) at ../sysdeps/unix/sysv/linux/nanosleep.c:25
+        ret = <optimized out>
+#4  0x00005979f56e3f98 in loop_forever () at /home/naruto/playground/gcry/src/gcry/idle_release.cr:194
+No locals.
+#5  0x00005979f558a826 in -> () at /home/naruto/playground/gcry/src/gcry/idle_release.cr:135
+No locals.
+#6  0x00005979f56d67df in start () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/crystal/system/thread.cr:249
+No locals.
+#7  0x00005979f56e7d97 in thread_proc () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/crystal/system/unix/pthread.cr:47
+No locals.
+
+Thread 6 (Thread 0x75896e65d6c0 (LWP 2808801) "dormant_flush"):
+#0  0x00005979f565f942 in pause () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/intrinsics.cr:191
+No locals.
+#1  0x00005979f5656c9b in lock () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/crystal/spin_lock.cr:11
+No locals.
+#2  0x00005979f564269d in alloc_old_small () at /home/naruto/playground/gcry/src/gcry/tlab.cr:149
+No locals.
+#3  0x00005979f55e1e99 in allocate () at /home/naruto/playground/gcry/src/gcry/heap.cr:1133
+No locals.
+#4  0x00005979f55dec8b in malloc () at /home/naruto/playground/gcry/src/gcry/heap.cr:556
+No locals.
+#5  0x00005979f55b799e in malloc () at /home/naruto/playground/gcry/src/gcry/gc_override.cr:1484
+No locals.
+#6  0x00005979f5584e4e in __crystal_malloc64 () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/gc.cr:24
+No locals.
+#7  0x00005979f5653b8c in trim_large_cache () at /home/naruto/playground/gcry/src/gcry/heap.cr:2335
+No locals.
+
+Thread 5 (Thread 0x75896de5c6c0 (LWP 2808802) "dormant_flush"):
+#0  0x00005979f565f942 in pause () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/intrinsics.cr:191
+No locals.
+#1  0x00005979f5656c9b in lock () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/crystal/spin_lock.cr:11
+No locals.
+#2  0x00005979f564269d in alloc_old_small () at /home/naruto/playground/gcry/src/gcry/tlab.cr:149
+No locals.
+#3  0x00005979f55e1e99 in allocate () at /home/naruto/playground/gcry/src/gcry/heap.cr:1133
+No locals.
+#4  0x00005979f55dec8b in malloc () at /home/naruto/playground/gcry/src/gcry/heap.cr:556
+No locals.
+#5  0x00005979f55b799e in malloc () at /home/naruto/playground/gcry/src/gcry/gc_override.cr:1484
+No locals.
+#6  0x00005979f5584e4e in __crystal_malloc64 () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/gc.cr:24
+No locals.
+#7  0x00005979f5653b8c in trim_large_cache () at /home/naruto/playground/gcry/src/gcry/heap.cr:2335
+No locals.
+
+Thread 4 (Thread 0x75896d65b6c0 (LWP 2808803) "dormant_flush"):
+#0  0x00005979f565f942 in pause () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/intrinsics.cr:191
+No locals.
+#1  0x00005979f5656c9b in lock () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/crystal/spin_lock.cr:11
+No locals.
+#2  0x00005979f564269d in alloc_old_small () at /home/naruto/playground/gcry/src/gcry/tlab.cr:149
+No locals.
+#3  0x00005979f55e1e99 in allocate () at /home/naruto/playground/gcry/src/gcry/heap.cr:1133
+No locals.
+#4  0x00005979f55dec8b in malloc () at /home/naruto/playground/gcry/src/gcry/heap.cr:556
+No locals.
+#5  0x00005979f55b799e in malloc () at /home/naruto/playground/gcry/src/gcry/gc_override.cr:1484
+No locals.
+#6  0x00005979f5584e4e in __crystal_malloc64 () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/gc.cr:24
+No locals.
+#7  0x00005979f55b5545 in new () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/array.cr:112
+No locals.
+
+Thread 3 (Thread 0x75896ce5a6c0 (LWP 2808804) "dormant_flush"):
+#0  0x00005979f565f942 in pause () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/intrinsics.cr:191
+No locals.
+#1  0x00005979f5656c9b in lock () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/crystal/spin_lock.cr:11
+No locals.
+#2  0x00005979f564269d in alloc_old_small () at /home/naruto/playground/gcry/src/gcry/tlab.cr:149
+No locals.
+#3  0x00005979f55e1e99 in allocate () at /home/naruto/playground/gcry/src/gcry/heap.cr:1133
+No locals.
+#4  0x00005979f55dec8b in malloc () at /home/naruto/playground/gcry/src/gcry/heap.cr:556
+No locals.
+#5  0x00005979f55b799e in malloc () at /home/naruto/playground/gcry/src/gcry/gc_override.cr:1484
+No locals.
+#6  0x00005979f5584e4e in __crystal_malloc64 () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/gc.cr:24
+No locals.
+#7  0x00005979f5653b8c in trim_large_cache () at /home/naruto/playground/gcry/src/gcry/heap.cr:2335
+No locals.
+
+Thread 2 (Thread 0x758967fff6c0 (LWP 2808805) "dormant_flush"):
+#0  0x00005979f565f942 in pause () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/intrinsics.cr:191
+No locals.
+#1  0x00005979f5656c9b in lock () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/crystal/spin_lock.cr:11
+No locals.
+#2  0x00005979f562903c in sweep () at /home/naruto/playground/gcry/src/gcry/collect_sweep.cr:111
+No locals.
+#3  0x00005979f55e7344 in run_collection_body () at /home/naruto/playground/gcry/src/gcry/collect.cr:2710
+No locals.
+#4  0x00005979f55e2c42 in run_collection () at /home/naruto/playground/gcry/src/gcry/collect.cr:2400
+No locals.
+#5  0x00005979f565535a in collect:release_warm () at /home/naruto/playground/gcry/src/gcry/collect.cr:1798
+No locals.
+#6  0x00005979f55b7d3a in collect () at /home/naruto/playground/gcry/src/gcry/gc_override.cr:1524
+No locals.
+#7  0x00005979f558eed4 in -> () at /home/naruto/playground/gcry/bench/dormant_flush_race.cr:269
+No locals.
+
+Thread 1 (Thread 0x758972ae67c0 (LWP 2808797) "dormant_flush"):
+#0  damaged? () at /home/naruto/playground/gcry/bench/dormant_flush_race.cr:183
+No locals.
+#1  0x00005979f5583618 in __crystal_main () at /home/naruto/playground/gcry/bench/dormant_flush_race.cr:293
+No locals.
+#2  0x00005979f5753426 in main_user_code () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/crystal/main.cr:129
+No locals.
+#3  0x00005979f575336f in main () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/crystal/main.cr:115
+No locals.
+#4  0x00005979f558ce3b in main () at /home/naruto/.local/share/mise/installs/crystal/1.21.0/share/crystal/src/crystal/system/unix/main.cr:9
+No locals.
+[Inferior 1 (process 2808797) detached]

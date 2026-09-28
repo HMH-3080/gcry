@@ -68,3 +68,37 @@ chased: the harness captures no stacks for a killed child.
 
 So the fault stays at two sightings, both in the first minutes of one
 campaign.
+
+## The hang, captured: an overflow raised under a class lock (fixed)
+
+`DORMANT_FLUSH_CAPTURE` (`a4158b8`) keeps a hung child's thread states and gdb
+backtraces. The relaunched campaign caught one within 95 runs
+(`hang-capture-overflow.txt`):
+
+- all five mutator threads spin on a size class's freelist lock in
+  `alloc_old_small`;
+- the collector waits for one in the lazy sweep;
+- one worker is inside `raise`:
+
+```
+alloc_old_small ← allocate ← Array.new ← CallStack.unwind ← raise
+  ← __crystal_raise_overflow ← bitmap_revive_dormant (bitmap_alloc.cr:999)
+  ← bitmap_take_pool_chunk ← bitmap_refill_pool ← bitmap_alloc_locked
+  ← alloc_old_small_locked (class lock held) ← … ← trim_large_cache ← GC.free
+```
+
+Line 999 was `@dormant_chunk_bytes -= mapped if @dormant_chunk_bytes >= mapped`.
+Revivers under different class locks write that counter, and so does the
+lazy sweep, which zeroes and recounts it with mutators running. So the
+check can pass and the subtraction then underflow. The `OverflowError`'s
+call stack needs an allocation, and that allocation needs the lock the
+raising thread holds.
+
+Release-on-collect made this reachable by default: multi-threaded programs
+now have dormant chunks after every `GC.collect`, where before they had them
+only with the opt-in.
+
+The fix is `Heap#sat_sub`. It reads the counter once, stops at zero, and
+cannot raise. Every `x -= n if x >= n` on a shared byte counter uses it (11
+sites). A lost update skews a statistic that the next major recounts; a raise
+under the lock had deadlocked the heap.

@@ -2087,7 +2087,7 @@ module Gcry
         @freelist_clean[index] = false
       end
       mapped = chunk.value.mapped_bytes
-      @dormant_chunk_bytes -= mapped if @dormant_chunk_bytes >= mapped
+      @dormant_chunk_bytes = sat_sub(@dormant_chunk_bytes, mapped)
       # Last: from here the sweep walks this chunk's blocks again.
       ChunkHeader.set_dormant(chunk, false)
       true
@@ -2104,6 +2104,22 @@ module Gcry
       lo, hi = dormant_release_range(chunk)
       Platform.reuse_released_pages(lo, hi - lo) if hi > lo
       ChunkHeader.set_dormant(chunk, false)
+    end
+
+    # `a - b`, or 0 where that would wrap, reading `a` once and never raising.
+    #
+    # Several byte counters are written from more than one lock domain — a
+    # reviver under its class lock, the lazy sweep recounting with mutators
+    # running — so `x -= n if x >= n` can pass its check and then underflow.
+    # A raise there is worse than a wrong count: it happens with the class
+    # freelist lock held, `raise` allocates, and the allocation spins on that
+    # same lock. Measured 2026-09-28: `bitmap_revive_dormant` raised
+    # `OverflowError` under the lock and a `dormant_flush_race` child hung
+    # with every thread spinning in `alloc_old_small`
+    # (`bench/log/linux/2026-09-28-dormant-flush-large-release/`).
+    @[AlwaysInline]
+    protected def sat_sub(a : UInt64, b : UInt64) : UInt64
+      a > b ? a &- b : 0_u64
     end
 
     # The pages a dormant chunk's release covers, and so the pages a revival
@@ -2244,7 +2260,7 @@ module Gcry
           mapped = chunk.value.mapped_bytes
           ThreadListWatch.check(chunk.as(Void*).address, mapped, ThreadListWatch::SITE_CACHE_OUT)
           free_bytes_sub(mapped)
-          @large_free_bytes -= mapped if @large_free_bytes >= mapped
+          @large_free_bytes = sat_sub(@large_free_bytes, mapped)
           @large_cache_hits += 1
           return user
         end
@@ -2348,10 +2364,10 @@ module Gcry
             @large_freelists[b] = nxt
             mapped = chunk.value.mapped_bytes
             unlink_chunk(chunk)
-            @heap_size -= mapped if @heap_size >= mapped
+            @heap_size = sat_sub(@heap_size, mapped)
             free_bytes_sub(mapped)
-            @large_free_bytes -= mapped if @large_free_bytes >= mapped
-            @large_mapped_bytes -= mapped if @large_mapped_bytes >= mapped
+            @large_free_bytes = sat_sub(@large_free_bytes, mapped)
+            @large_mapped_bytes = sat_sub(@large_mapped_bytes, mapped)
             @unmapped_bytes += mapped
             hv = header.value
             hv.next_free = detached
@@ -2380,10 +2396,10 @@ module Gcry
             @large_freelists[b] = nxt
             mapped = chunk.value.mapped_bytes
             unlink_chunk(chunk)
-            @heap_size -= mapped if @heap_size >= mapped
+            @heap_size = sat_sub(@heap_size, mapped)
             free_bytes_sub(mapped)
-            @large_free_bytes -= mapped if @large_free_bytes >= mapped
-            @large_mapped_bytes -= mapped if @large_mapped_bytes >= mapped
+            @large_free_bytes = sat_sub(@large_free_bytes, mapped)
+            @large_mapped_bytes = sat_sub(@large_mapped_bytes, mapped)
             @unmapped_bytes += mapped
             unless guard_release(chunk.as(Void*).address, mapped, GUARD_KIND_LARGE)
               Gcry::OS.munmap(chunk.as(Void*), LibC::SizeT.new(mapped))

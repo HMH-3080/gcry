@@ -996,7 +996,7 @@ module Gcry
       lo, hi = dormant_release_range(chunk)
       Platform.reuse_released_pages(lo, hi - lo) if hi > lo
       mapped = chunk.value.mapped_bytes
-      @dormant_chunk_bytes -= mapped if @dormant_chunk_bytes >= mapped
+      @dormant_chunk_bytes = sat_sub(@dormant_chunk_bytes, mapped)
       words = chunk.value.bitmap_words.to_i32
       occ = ChunkHeader.occ_bitmap(chunk)
       mark = ChunkHeader.mark_bitmap(chunk)

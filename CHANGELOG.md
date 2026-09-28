@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Reviving a dormant chunk could deadlock the heap.** Every revival did
+  `@dormant_chunk_bytes -= mapped if @dormant_chunk_bytes >= mapped` while
+  holding a size class's freelist lock. Other revivers under other class
+  locks write the same counter, and so does the lazy sweep, which recounts
+  it with mutators running. The check could pass, the value could then
+  change, and the subtraction underflowed. Crystal raised `OverflowError`,
+  `raise` allocated, and the allocation spun on the lock the thread already
+  held. Every other thread then piled up behind it.
+
+  A `dormant_flush_race` child was caught doing exactly that: every thread in
+  `alloc_old_small`, and the stuck one inside `bitmap_revive_dormant` →
+  `__crystal_raise_overflow` → `CallStack.unwind`. Multi-threaded programs
+  now make chunks dormant at `GC.collect`, which is what made this
+  reachable by default.
+
+  The counters shared across lock domains now go through a subtraction that
+  reads the value once, stops at zero, and cannot raise
+  (`bench/log/linux/2026-09-28-dormant-flush-large-release/`).
+
 - **Header allocator: the dormant opt-in could release pages under live
   objects in a multi-threaded program without TLAB.** The sweep there runs
   while mutators allocate. When it made an empty chunk dormant, that chunk's
