@@ -99,3 +99,40 @@ load's working set, and the opt-in shrinks it only by faulting it back in on
 every cycle. The place to give memory back is the one this change took: the
 collections that ask for it, and the idle collector once the load stops. The
 prototype was not committed.
+
+## What CI caught: the header allocator's lazy sweep (fixed in `ccba260`)
+
+On the first push, `8_medium_cursor_spec` failed on three header-allocator
+jobs: x86_64 `GCRY_BITMAP=1 GCRY_BITMAP_ALLOC=0` (283 bad), aarch64 (108),
+and Windows freelist (191). The spec has four threads allocating medium
+buffers, each calling `GC.collect`. It checks that a fresh buffer reads zero
+and that a held one keeps its stamps.
+
+Locally, `-Dgcry_block_headers`, `GCRY_BITMAP_ALLOC=0`, 5 runs per arm:
+
+| arm | failed |
+|---|---:|
+| default (release on collect) | 3 / 5 |
+| `GCRY_PARALLEL_RELEASE_ON_COLLECT=0` | 0 / 5 |
+| `…=0` plus `GCRY_PARALLEL_DORMANT=1` | **4 / 5** |
+
+So the defect predates this change: the opt-in has it too. This change only
+made it reachable by default.
+
+The mechanism: without TLAB, a multi-mutator sweep runs with mutators
+allocating (`sweep_after_world?`). It takes a class's freelist lock one chunk
+at a time. When it finds a header chunk empty and makes it dormant, that
+chunk's FREE blocks stay on the class freelist until the rebuild at the end of
+the sweep. A mutator that takes one in between writes into a chunk the
+post-STW flush then releases. The TLAB configurations sweep inside the stop,
+so the window never opened there.
+
+The fix: a sweep that runs with the world going no longer makes a **header**
+chunk dormant. The chunk is kept mapped as before. Bitmap chunks have no
+freelist: the pool excludes dormant chunks and the cursor is pinned, and they
+passed this spec in every run.
+
+After the fix, 10 runs each, every arm 0 failures: default,
+`GCRY_PARALLEL_DORMANT=1`, `GCRY_BITMAP=1` (header allocator), and the
+headerless default. The spec is the gate: it failed on three platforms before
+the fix.
