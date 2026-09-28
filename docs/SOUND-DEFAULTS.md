@@ -892,6 +892,10 @@ fix that reversal pointed at — has now reversed it back. Current standing:
 | Kemal EC1 + one extra thread, same | **1.41 ms** | 6.45 ms (4.56×), req/s −5% |
 | Kemal **EC4**, 2026-09-28, `macos-latest` CI, same | **1.11 ms** | 4.40 ms (3.93×), req/s in noise |
 | Kemal EC1 + one extra thread, macOS, same | **0.90 ms** | 4.01 ms (4.46×), req/s in noise |
+| Kemal **EC4**, 2026-09-29, `ubuntu-latest` CI, after the layout tables left the static roots and pooled fiber stacks stopped being probed | **1.21 ms** | 4.72 ms (3.91×), req/s −4% |
+| Kemal EC1 + one extra thread, same | **0.89 ms** | 4.71 ms (5.28×), req/s −3% |
+| Kemal **EC4**, 2026-09-29, `macos-latest` CI, same | **1.06 ms** | 4.33 ms (4.11×), req/s in noise |
+| Kemal EC1 + one extra thread, macOS, same | **0.67 ms** | 3.67 ms (5.47×), req/s in noise |
 
 The 2026-09-26 rows are `bench/sound_matrix.py`, dispatch input
 `sound_matrix_rounds` (`bench/log/linux/2026-09-26-sound-matrix/`). On Linux
@@ -913,6 +917,13 @@ about 3.1 to 1.7 ms on Linux and from 3.3 to 1.1 ms on macOS. `GCRY_SOUND=1`
 keeps its whole-stack scan by design (lag 0 opts out of the parked-SP path),
 so its absolute pause is where it was and the ratio reads 3.5–4.6×
 (`bench/log/linux/2026-09-28-sound-matrix/`). Throughput stays in the noise.
+
+**2026-09-29: and again.** The static-root scan stopped reading gcry's own
+layout tables, and parked fibers on pooled stacks are no longer probed with
+a syscall pair. Both savings reach sound as well, but sound's whole-stack
+scan is so much larger that the ratio grew to 3.9–5.5×. The absolute sound
+pause moved from 5.84 to 4.72 ms at Linux EC4
+(`bench/log/linux/2026-09-29-pause-cumulative/`).
 
 Whether sound should take the parked-SP scan too is now the question, and it
 is a policy one. The scan is exact given two things. The first is
