@@ -1,0 +1,350 @@
+{
+ "ec1/tuned": [
+  {
+   "rps": 38243.03,
+   "pause_ms": 0.736566,
+   "rss_kib": 15020,
+   "footprint_kib": null,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 33752.4,
+   "pause_ms": 0.747105,
+   "rss_kib": 14700,
+   "footprint_kib": null,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 39179.52,
+   "pause_ms": 0.739812,
+   "rss_kib": 14936,
+   "footprint_kib": null,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 38754.68,
+   "pause_ms": 0.695298,
+   "rss_kib": 14892,
+   "footprint_kib": null,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 39890.46,
+   "pause_ms": 0.736355,
+   "rss_kib": 14856,
+   "footprint_kib": null,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 36398.73,
+   "pause_ms": 0.726135,
+   "rss_kib": 14924,
+   "footprint_kib": null,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 39218.11,
+   "pause_ms": 0.747596,
+   "rss_kib": 15244,
+   "footprint_kib": null,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 37023.89,
+   "pause_ms": 0.717111,
+   "rss_kib": 15144,
+   "footprint_kib": null,
+   "soundness": "tuned"
+  }
+ ],
+ "ec1/sound": [
+  {
+   "rps": 38171.14,
+   "pause_ms": 0.737718,
+   "rss_kib": 14720,
+   "footprint_kib": null,
+   "soundness": "sound"
+  },
+  {
+   "rps": 40222.46,
+   "pause_ms": 0.733109,
+   "rss_kib": 14868,
+   "footprint_kib": null,
+   "soundness": "sound"
+  },
+  {
+   "rps": 37732.75,
+   "pause_ms": 0.7227,
+   "rss_kib": 15188,
+   "footprint_kib": null,
+   "soundness": "sound"
+  },
+  {
+   "rps": 39271.65,
+   "pause_ms": 0.72296,
+   "rss_kib": 14564,
+   "footprint_kib": null,
+   "soundness": "sound"
+  },
+  {
+   "rps": 40709.05,
+   "pause_ms": 0.71299,
+   "rss_kib": 17136,
+   "footprint_kib": null,
+   "soundness": "sound"
+  },
+  {
+   "rps": 37920.79,
+   "pause_ms": 0.746604,
+   "rss_kib": 14808,
+   "footprint_kib": null,
+   "soundness": "sound"
+  },
+  {
+   "rps": 35827.69,
+   "pause_ms": 0.728099,
+   "rss_kib": 14720,
+   "footprint_kib": null,
+   "soundness": "sound"
+  },
+  {
+   "rps": 40250.96,
+   "pause_ms": 0.705839,
+   "rss_kib": 15020,
+   "footprint_kib": null,
+   "soundness": "sound"
+  }
+ ],
+ "ec1+thread/tuned": [
+  {
+   "rps": 37031.62,
+   "pause_ms": 0.873484,
+   "rss_kib": 15808,
+   "footprint_kib": null,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 35140.67,
+   "pause_ms": 0.906555,
+   "rss_kib": 15976,
+   "footprint_kib": null,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 34319.61,
+   "pause_ms": 0.921734,
+   "rss_kib": 15704,
+   "footprint_kib": null,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 35821.05,
+   "pause_ms": 0.879374,
+   "rss_kib": 15916,
+   "footprint_kib": null,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 37665.7,
+   "pause_ms": 0.853515,
+   "rss_kib": 15772,
+   "footprint_kib": null,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 38028.39,
+   "pause_ms": 0.904171,
+   "rss_kib": 15636,
+   "footprint_kib": null,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 39224.5,
+   "pause_ms": 0.913749,
+   "rss_kib": 15408,
+   "footprint_kib": null,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 37850.4,
+   "pause_ms": 0.850832,
+   "rss_kib": 15980,
+   "footprint_kib": null,
+   "soundness": "tuned"
+  }
+ ],
+ "ec1+thread/sound": [
+  {
+   "rps": 33106.92,
+   "pause_ms": 4.577051,
+   "rss_kib": 15620,
+   "footprint_kib": null,
+   "soundness": "sound"
+  },
+  {
+   "rps": 37847.2,
+   "pause_ms": 4.708769,
+   "rss_kib": 15512,
+   "footprint_kib": null,
+   "soundness": "sound"
+  },
+  {
+   "rps": 36597.01,
+   "pause_ms": 4.706183,
+   "rss_kib": 16056,
+   "footprint_kib": null,
+   "soundness": "sound"
+  },
+  {
+   "rps": 35731.73,
+   "pause_ms": 4.57219,
+   "rss_kib": 15404,
+   "footprint_kib": null,
+   "soundness": "sound"
+  },
+  {
+   "rps": 35699.95,
+   "pause_ms": 4.829543,
+   "rss_kib": 15676,
+   "footprint_kib": null,
+   "soundness": "sound"
+  },
+  {
+   "rps": 34273.5,
+   "pause_ms": 4.822848,
+   "rss_kib": 15768,
+   "footprint_kib": null,
+   "soundness": "sound"
+  },
+  {
+   "rps": 36106.21,
+   "pause_ms": 4.705781,
+   "rss_kib": 15796,
+   "footprint_kib": null,
+   "soundness": "sound"
+  },
+  {
+   "rps": 38011.84,
+   "pause_ms": 4.698947,
+   "rss_kib": 15556,
+   "footprint_kib": null,
+   "soundness": "sound"
+  }
+ ],
+ "ec4/tuned": [
+  {
+   "rps": 64497.94,
+   "pause_ms": 1.538648,
+   "rss_kib": 18656,
+   "footprint_kib": null,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 66112.25,
+   "pause_ms": 1.156275,
+   "rss_kib": 18788,
+   "footprint_kib": null,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 64224.28,
+   "pause_ms": 1.367893,
+   "rss_kib": 18672,
+   "footprint_kib": null,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 64447.68,
+   "pause_ms": 1.191211,
+   "rss_kib": 18604,
+   "footprint_kib": null,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 64616.17,
+   "pause_ms": 1.202712,
+   "rss_kib": 18888,
+   "footprint_kib": null,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 61168.61,
+   "pause_ms": 1.21207,
+   "rss_kib": 18604,
+   "footprint_kib": null,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 63277.13,
+   "pause_ms": 1.195162,
+   "rss_kib": 18524,
+   "footprint_kib": null,
+   "soundness": "tuned"
+  },
+  {
+   "rps": 63151.27,
+   "pause_ms": 1.30117,
+   "rss_kib": 18536,
+   "footprint_kib": null,
+   "soundness": "tuned"
+  }
+ ],
+ "ec4/sound": [
+  {
+   "rps": 61395.15,
+   "pause_ms": 4.92669,
+   "rss_kib": 18504,
+   "footprint_kib": null,
+   "soundness": "sound"
+  },
+  {
+   "rps": 63496.39,
+   "pause_ms": 4.977073,
+   "rss_kib": 18560,
+   "footprint_kib": null,
+   "soundness": "sound"
+  },
+  {
+   "rps": 62142.1,
+   "pause_ms": 4.488983,
+   "rss_kib": 18552,
+   "footprint_kib": null,
+   "soundness": "sound"
+  },
+  {
+   "rps": 61122.7,
+   "pause_ms": 4.687928,
+   "rss_kib": 18744,
+   "footprint_kib": null,
+   "soundness": "sound"
+  },
+  {
+   "rps": 61996.16,
+   "pause_ms": 4.759913,
+   "rss_kib": 18728,
+   "footprint_kib": null,
+   "soundness": "sound"
+  },
+  {
+   "rps": 59908.42,
+   "pause_ms": 4.586957,
+   "rss_kib": 18424,
+   "footprint_kib": null,
+   "soundness": "sound"
+  },
+  {
+   "rps": 62086.6,
+   "pause_ms": 4.48768,
+   "rss_kib": 18532,
+   "footprint_kib": null,
+   "soundness": "sound"
+  },
+  {
+   "rps": 62163.09,
+   "pause_ms": 4.751836,
+   "rss_kib": 18476,
+   "footprint_kib": null,
+   "soundness": "sound"
+  }
+ ]
+}
