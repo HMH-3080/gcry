@@ -47,3 +47,18 @@ The run's own paired sound ÷ tuned ratios, pause: Linux 0.98× / 5.22× /
 3.77×, macOS 1.05× / 5.49× / 4.19×. These are larger multipliers than
 0.30.0's because the tuned denominator shrank. `GCRY_SOUND=1` still scans
 every parked fiber whole and takes none of the tuned path's savings.
+
+## Stress campaign on `cbac3e0`
+
+The default-configuration campaign ran five lanes for 5 h over the tree with
+all four changes (`campaign-032-summary.md`). The `dormant_flush` lane also
+had `GCRY_TRACE_LARGE=1` and hang capture on. **4 784 runs, 25 lane-hours,
+0 failures.** There were 4 timeouts:
+- `stw_mt` seed 20069;
+- `stw_mt+diag` seeds 20116 and 20396;
+- `stw_mt_hdr_tlab_nursery` seed 20414.
+
+Each capture shows two worker threads in `parallel/scheduler.cr:97` `resume`
+and no collector frame on any thread. That is Crystal's scheduler deadlock,
+crystal-lang/crystal#17486 (fix in #17491), and not a stop that failed to
+end.
