@@ -21,6 +21,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `GCRY_DISABLE_TYPE_ID_GATE` is gone. `make static-raw-buffer-roots`
   (`bench/log/linux/2026-09-29-static-type-id-gate/`).
 
+### Changed
+
+- **The page blacklist is off by default.** Its only input was the static
+  type-id gate, so with the gate off it received nothing, yet it still
+  checked every free block of a word on the allocator's refill path. Fed
+  instead from root candidates that name a free block, it skipped 538 k
+  blocks in a Kemal EC4 run and changed neither pause, RSS nor req/s.
+  `GCRY_BLACKLIST=1` turns it on; `GCRY_DISABLE_BLACKLIST` is gone.
+
 ## [0.31.1] - 2026-09-29
 
 ### Fixed

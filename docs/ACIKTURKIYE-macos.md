@@ -142,7 +142,7 @@ that as "one regime in nine draws on this host at this commit", not as
 | Soft-dirty | N/A |
 | Host page | **16 KiB** on Apple Silicon — free-page reclaim uses `sysconf(PAGESIZE)` |
 | Free-page RSS | `MADV_DONTNEED` is a no-op; process default uses `mach_vm_deallocate` + `allocate(FIXED)` |
-| Blacklist | Default **on** on Darwin (re-enabled in P2.3 era; `GCRY_DISABLE_BLACKLIST=1` to opt out) |
+| Blacklist | Default **off** since 2026-09-29 (`GCRY_BLACKLIST=1`); it had been on since the P2.3 era |
 | Conservative scan | Untyped payloads (`type_id ≤ 0`) are **object-base only** |
 | Layout builtins | Curated Array/Hash/Deque/`IO::Memory`/`JSON::Any` (not whole-program AUTO) |
 | Large mmap | Host-page aligned; Darwin `large_cache_retain` starts at **1 MiB** (adaptive LRU) |

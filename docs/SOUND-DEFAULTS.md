@@ -29,7 +29,7 @@ GCRY_SOUND=1 ./your-app
 | `stw_multi_stack_lag` | `256 KiB` | Bounds how far below a parked fiber's `stack_top` another thread's stack is scanned. A live pointer deeper than the lag is never seen. `0` means full `guard → bottom`. |
 | `stw_multi_pthread_lag` | `256 KiB` | Same, for the OS thread mapping when SP sits on a pool fiber. |
 | `scrub_fibers_enabled` | `false` (was `true`) | Zeroes bytes below a parked fiber's **estimated** SP, from another thread. bdwgc's `GC_clear_stack` only ever wipes below the *calling* thread's own hardware SP — a much stronger guarantee. **Now off by default** — the audit never reached the EC1 window and its RSS justification does not reproduce; see *What `scrub_fibers` costs*. The estimate is exact only because Crystal records `stack_top` before it clears the running flag; when it is not, the wipe lands on live frames and the mid-swap guard is the only thing that prevents it — measured, see *The mid-swap window*. Opt in with `GCRY_SCRUB_FIBERS=1`. |
-| `blacklist_enabled` | `true` | Steers allocation away from pages the type_id gate called false. With the gate off nothing feeds it; the profile turns it off so `sound` has exactly one meaning. |
+| `blacklist_enabled` | `false` (since 2026-09-29 — was `true`; `GCRY_BLACKLIST=1`) | Steers allocation away from pages the type_id gate called false. With the gate off by default nothing feeds it, and fed from free-block candidates instead it moved nothing on Kemal, so it is off too. |
 | `scan_static_roots` | `true` (process) | A heap that never walks BSS/data misses roots by construction. `GCRY_DISABLE_STATIC_ROOTS=1` turns it off and will crash a real program — it is in the profile so the label can never report `sound` while it is off. Library heaps default it *off*, so a library heap must opt in before it can report sound roots. |
 
 `GCRY_SOUND=1` sets all of these to their complete-scan values. It is applied
@@ -259,6 +259,10 @@ a 398 µs pause. Per knob, against tuned:
 | `GCRY_DISABLE_TYPE_ID_GATE=1` | +0.2% | |
 | `GCRY_INTERIOR=1` (now the default; escape `GCRY_DISABLE_INTERIOR=1`) | −0.1% | |
 | `GCRY_DISABLE_SCRUB_FIBERS=1` | **−1.7%** | **pays for itself** (re-cut: −9.1%, below) |
+
+Since 2026-09-29 the type_id gate and the blacklist are off by default, and
+their two `DISABLE` knobs are gone
+(`bench/log/linux/2026-09-29-static-type-id-gate/`).
 
 Scrub zeroes the words below a parked fiber's estimated SP, and those zeros are
 then cheap to reject during the root scan. Dropping it makes root scanning

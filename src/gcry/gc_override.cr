@@ -76,7 +76,7 @@ module GC
       # § "What scrub_fibers costs".
       # Opt back in: GCRY_SCRUB_FIBERS=1.
       heap.scrub_fibers_enabled = false
-      heap.blacklist_enabled = true
+      heap.blacklist_enabled = false
       # Large cache on Darwin starts at 1 MiB (adaptive can grow to LARGE_CACHE_LIMIT
       # if hit-rate warrants it). A cached chunk stays resident and counts in
       # `phys_footprint`, so a fat cache is wasteful; the 1 MiB floor avoids mmap
@@ -119,7 +119,7 @@ module GC
       # Collect-time mutator clear_stack was measured and dropped (below-SP wipe
       # is outside the root-scan window; no durable thr/RSS win).
       heap.scrub_fibers_enabled = false
-      heap.blacklist_enabled = true
+      heap.blacklist_enabled = false
       # Large-object freelist: no retain (was 4 MiB floor, adaptive → 32 MiB).
       # Escape: GCRY_LARGE_CACHE=<bytes> (adaptive may grow from a non-zero floor).
       heap.large_cache_retain = 0_u64
@@ -142,11 +142,13 @@ module GC
     # gate.
     heap.type_id_gate = false
     heap.type_id_gate_stacks = false
-    # Page blacklist: previously off on Darwin (freelist abandonment spiral under
-    # all-conservative scanning). Re-enabled in P2.3 era now that layout-precise
-    # scans cut false root hits sharply — the abandon spiral is unlikely.
-    # Escape: GCRY_DISABLE_BLACKLIST=1.
-    # (blacklist_enabled set in the Darwin/Linux branches above.)
+    # Page blacklist: off (set in the Darwin/Linux branches above). Its only
+    # input was the static type_id gate's rejects, and with the gate gone it
+    # had none. Fed the sound way instead, from root candidates that name a
+    # free block, it skipped 538 k blocks in a Kemal EC4 run and moved neither
+    # pause, post-GC RSS nor req/s, so it stays off
+    # (`bench/log/linux/2026-09-29-static-type-id-gate/`). `GCRY_BLACKLIST=1`
+    # turns it on.
     # Interior pointers on ambient roots are a *soundness* requirement under
     # LLVM -O3, not a tuning: a strength-reduced loop over an Array/String
     # buffer keeps only `buffer + i*8` in a register while the base is dead,
@@ -690,9 +692,6 @@ module GC
 
     if env_flag_one?("GCRY_BLACKLIST")
       heap.blacklist_enabled = true
-    end
-    if env_flag_one?("GCRY_DISABLE_BLACKLIST")
-      heap.blacklist_enabled = false
     end
 
     if env_flag_one?("GCRY_DISABLE_LAYOUT")

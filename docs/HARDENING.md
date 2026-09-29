@@ -21,7 +21,7 @@ crystal build -Dgc_none samples/stress.cr -o bin/stress && ./bin/stress 300
 - Majors: adaptive (the bitmap allocator is the default) — live bytes after each major × 100 %, clamped **8–64 MiB** (Darwin floor 16 MiB; EC4 fixed 64 MiB); `GCRY_BITMAP_ALLOC=0` freelist (header layout only): Linux **32 MiB**, Darwin **16 MiB**; **full STW**; nursery / incremental **off** (opt in `GCRY_NURSERY=1` on the header layout / `GCRY_INCREMENTAL=1`)
 - **Adaptive nursery threshold** when nursery is on (target survival 50%, clamped [64 KiB, 8 MiB]). Disable with `GCRY_DISABLE_ADAPTIVE_NURSERY=1`
 - Empty chunks **released** (`GCRY_KEEP_CHUNKS=1` to retain); dormant retain budget: Linux **0**, Darwin **512 KiB** (`GCRY_EMPTY_CHUNK_RETAIN`)
-- Base-pointer-only ambient roots; root **type_id** gate **off** (since 2026-09-29; `GCRY_TYPE_ID_GATE=1`); layout scan **on**; **SP clamp** **on**; page **blacklist** **on** (Linux + Darwin; `GCRY_DISABLE_BLACKLIST=1` to opt out)
+- Base-pointer-only ambient roots; root **type_id** gate **off** (since 2026-09-29; `GCRY_TYPE_ID_GATE=1`); layout scan **on**; **SP clamp** **on**; page **blacklist** **off** (since 2026-09-29; `GCRY_BLACKLIST=1`)
 - Fiber stack scrub **off** (was on through v0.18; `GCRY_SCRUB_FIBERS=1` to opt in)
 - Base-ptr roots, the type_id gate, the STW stack/pthread lags, the blacklist —
   and fiber scrub when it is opted in — are **root-completeness heuristics**:
@@ -228,8 +228,7 @@ Raising `GCRY_THRESHOLD` cuts major count but grows pause p50 — measure on the
 | `GCRY_FIBER_LIST_UNLOCKED=1` | **Research only, and it restores a defect.** Walk the fiber list in a stopped world without holding its mutex, as before 2026-09-29. A thread leaves Crystal's thread list before its fiber list, so between the two it is not suspended, and its `Fiber.inactive` sets the removed node's `next` to nil under a walk standing on it: every fiber after that node went unscanned for the collection. **Red arm** of `make fiber-list-exit-race` (lost 425–681 of 2 560 stack-held objects in each of five runs; `bench/log/linux/2026-09-29-fiber-list-exit/`) |
 | `GCRY_FIBER_WALK_TEST_DELAY_US=N` | **Research only.** Spin N µs (up to 100 000) at every fiber of the stopped-world root walk, while the walk stands on that node, so a list change made during the stop lands inside it. `make fiber-list-exit-race` sets 150 |
 | `GCRY_DISABLE_LAZY_SWEEP` | Force in-STW sweep (default: EC1 and Parallel reclaim-off / TLAB-off sweep after `start_world`) |
-| `GCRY_BLACKLIST=1` | Force page blacklist on (already process default) |
-| `GCRY_DISABLE_BLACKLIST=1` | No page blacklist |
+| `GCRY_BLACKLIST=1` | Turn the page blacklist on: free blocks on pages a rejected root candidate pointed into are not handed out again. Off by default since 2026-09-29: its only input was the static `type_id` gate, which went off the same day. `GCRY_TYPE_ID_GATE=1` alone does not turn it back on |
 | `GCRY_DISABLE_STATIC_ROOTS=1` | Skip dyld/ELF static root scan (debug; unsafe). `make static-bss-roots`'s red arm since 2026-09-16: it is the stronger break than the `GCRY_STATIC_BSS_CAP=1` the harness uses internally, and red at "a block held only by the BSS did not survive". On a harness that does not gate on it the process dies instead (measured: five of seven root gates exit 11), so it is a gate arm and not a debugging aid |
 | `GCRY_LIVE_ATTR=1` | Research: first-mark root-source counters; pair with `/gc-live-attr` |
 | `GCRY_LIVE_ATTR_WATCH_TID` | Research: first-mark counts for one type_id (`first_mark_watch_*`; implies LIVE_ATTR) |

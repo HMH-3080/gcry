@@ -61,9 +61,28 @@ string back. Shipped: 3 of 3 intact. `GCRY_TYPE_ID_GATE=1`: 3 of 3 lost,
 two runs crashing in `String#==` and one reporting both buffers freed. It
 runs on Linux and macOS CI.
 
-## Left as it is
+## And the blacklist, which only the gate fed
 
-The page blacklist was fed only by gate rejects, so it now gets no input.
-It still costs a per-block check on the bitmap refill path whenever it is on.
-Whether to feed it soundly (as Boehm does, from candidates that point at
-*free* blocks) or turn it off is the next measurement.
+The page blacklist keeps allocation away from pages a false root pointed
+into. Its only input was `note_false_root`, which only the gate called, so
+with the gate off it received nothing. It still checked every free block of
+a word on the bitmap refill path.
+
+Two A/Bs, same protocol, 9 rounds each:
+
+- **On but empty against off** (`env_ab.py`, `GCRY_DISABLE_BLACKLIST=1`):
+  EC1 pause −2 µs (5/9), RSS +36 KB, req/s +1 023 (7/9). EC4 pause
+  −105 µs (6/9), RSS −52 KB. The null arm moved as much: −648 req/s and
+  −200 KB at EC1, −70 µs at EC4.
+- **Fed the sound way against empty** (`bin_ab.py`, a throwaway build).
+  Boehm's rule: a root candidate that names a *free* block marks nothing,
+  and its page is blacklisted. The blacklist then skipped 12 blocks in an
+  EC1 run and **538 520** in an EC4 run. EC1 pause −4 µs, RSS −136 KB,
+  req/s −188; EC4 pause −108 µs, RSS −172 KB, req/s +845. The null arm
+  moved −116 KB and −136 KB of RSS, and 39 µs of pause at EC4.
+
+So the blacklist buys nothing measurable on Kemal whether or not it is fed.
+It is now off by default, with `GCRY_BLACKLIST=1` to turn it on;
+`GCRY_DISABLE_BLACKLIST` is gone. The sound feed was not shipped. A fat app
+with a large, densely referenced heap is where it could matter, and none was
+at hand to measure.
