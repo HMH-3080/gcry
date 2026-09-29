@@ -404,7 +404,7 @@ module Gcry
     private def fiber_stack_geometry?(lo : UInt64, hi : UInt64) : Bool
       {% if @top_level.has_constant?("Fiber") && Fiber.has_constant?("StackPool") %}
         size = Fiber::StackPool::STACK_SIZE.to_u64
-        page = Roots::PAGE_SIZE.to_u64
+        page = Roots.runtime_page_size
         return false unless hi > lo
         # Size only. An earlier version also required the guard page to sit on a
         # `STACK_SIZE` boundary and missed six hits in one run: `allocate_stack`
@@ -473,7 +473,7 @@ module Gcry
         next if out
         @classifier_fibers &+= 1
         stack = fiber.@stack
-        guard = stack.pointer.address + Roots::PAGE_SIZE
+        guard = stack.pointer.address + Roots.runtime_page_size
         bottom = stack.bottom.address
         next unless guard < bottom
         next unless at >= guard && at < bottom

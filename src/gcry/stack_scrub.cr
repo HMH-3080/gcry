@@ -235,7 +235,7 @@ module Gcry
               hi = lo + stacksize.to_u64
               if sp_addr > lo && sp_addr <= hi
                 bounds_known = true
-                guard = lo + Roots::PAGE_SIZE
+                guard = lo + Roots.runtime_page_size
               end
             end
             LibC.pthread_attr_destroy(pointerof(attr))
@@ -246,7 +246,7 @@ module Gcry
             hi = bounds[1].address
             if sp_addr > lo && sp_addr <= hi
               bounds_known = true
-              guard = lo + Roots::PAGE_SIZE
+              guard = lo + Roots.runtime_page_size
             end
           end
         {% end %}
@@ -352,9 +352,9 @@ module Gcry
         stack = fiber.@stack
         base = stack.pointer.address
         bottom = stack.bottom.address
-        next if base == 0 || bottom <= base + Roots::PAGE_SIZE
+        next if base == 0 || bottom <= base + Roots.runtime_page_size
 
-        guard = base + Roots::PAGE_SIZE
+        guard = base + Roots.runtime_page_size
         top = fiber.@context.stack_top.address
         top = guard if top < guard
         next if top <= guard || top > bottom

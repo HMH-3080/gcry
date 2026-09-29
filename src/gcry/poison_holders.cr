@@ -591,7 +591,7 @@ module Gcry
         bottom = stack.bottom.address
         next unless base != 0 && bottom > base
 
-        low = base &+ Roots::PAGE_SIZE
+        low = base &+ Roots.runtime_page_size
         next unless low < bottom
         # The faulting thread is running on one of these. Below its SP is dead
         # space that the last few calls left behind — including, quite often, a

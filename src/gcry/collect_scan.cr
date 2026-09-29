@@ -1128,7 +1128,7 @@ module Gcry
       parked = IdleRelease.parked_sp
       return Pointer(Void).new(parked) if parked != 0
       if fiber = thread.@current_fiber
-        return Pointer(Void).new(fiber.@stack.pointer.address + Roots::PAGE_SIZE)
+        return Pointer(Void).new(fiber.@stack.pointer.address + Roots.runtime_page_size)
       end
       nil
     end
@@ -1378,7 +1378,7 @@ module Gcry
         end
 
         stack = fiber.@stack
-        guard = stack.pointer.address + Roots::PAGE_SIZE
+        guard = stack.pointer.address + Roots.runtime_page_size
         bottom = stack.bottom.address
         next unless guard < bottom
 
@@ -1558,7 +1558,7 @@ module Gcry
           hi = 0_u64
           if fiber
             st = fiber.@stack
-            lo = st.pointer.address + Roots::PAGE_SIZE
+            lo = st.pointer.address + Roots.runtime_page_size
             hi = st.bottom.address
           elsif pthread_bounds
             lo = pthread_bounds[0].address
@@ -1611,7 +1611,7 @@ module Gcry
     # (phase_stacks ~1.5ms vs ~0.02ms; Kemal /json stuck ~82% Boehm).
     private def scan_other_thread_fiber_ec1(fiber : Fiber, sp : Void*?, pthread_bounds : {Void*, Void*}?) : Nil
       stack = fiber.@stack
-      guard = stack.pointer.address + Roots::PAGE_SIZE
+      guard = stack.pointer.address + Roots.runtime_page_size
       bottom = stack.bottom.address
 
       if sp
@@ -1666,7 +1666,7 @@ module Gcry
         bottom = stack.bottom.address
         next unless spa >= base && spa < bottom
 
-        guard = base + Roots::PAGE_SIZE
+        guard = base + Roots.runtime_page_size
         next unless guard < bottom
 
         low = stack_scan_low(spa, guard)

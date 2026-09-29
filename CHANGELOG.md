@@ -33,6 +33,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and 0 after; it runs on Windows, Linux and macOS CI
   (`bench/log/linux/2026-09-29-windows-unborn-thread-stack/`).
 
+- **16 and 64 KiB page kernels: the stack low-water skip read the wrong
+  pagemap entries, and every Apple Silicon program printed a false warning.**
+  On Linux the pagemap probe indexed in a fixed 4 KiB unit, while the kernel
+  indexes in its own. On a 16 KiB kernel the first read ran past the end of
+  the address space, and the skip then switched itself off for the rest of
+  the process, so every parked fiber stack was scanned whole. Measured: such
+  a read returns 0 bytes. The probe and the fiber guard offsets now use the
+  kernel's page size. The `GC.init` warning about a non-4 KiB kernel is
+  removed: on macOS every page-aligned decision it named already used the
+  kernel's size, and nothing it named uses the compiled unit any more. No
+  change on 4 KiB kernels (`bench/log/linux/2026-09-29-page-size-units/`).
+
 ### Changed
 
 - **The page blacklist is off by default.** Its only input was the static

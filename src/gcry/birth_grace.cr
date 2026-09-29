@@ -227,7 +227,7 @@ module Gcry
         base = stack.pointer.address
         bottom = stack.bottom.address
         next unless base != 0 && bottom > base
-        guard = base &+ Roots::PAGE_SIZE
+        guard = base &+ Roots.runtime_page_size
         next unless guard < bottom
         scan_top = fiber_stack_scan_top(fiber, guard, stw_multi)
 

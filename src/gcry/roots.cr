@@ -199,55 +199,39 @@ module Gcry
     # fiber guard pages and unmapped holes are skipped (no SIGSEGV). Use for
     # fiber/thread stacks; leave false for /proc/self/maps static ranges.
     MAX_SCAN_BYTES = 64_u64 * 1024 * 1024
-    # A compile-time constant, and the platform modules ask `sysconf` for the
-    # same number — two sources of truth for something every page-aligned
-    # decision in the collector depends on. On a kernel whose pages are 16 or
-    # 64 KiB (aarch64 ships both) this one is simply wrong, and the failures
-    # that follow are silent: `madvise` over a misaligned range returns EINVAL
-    # and dormancy quietly stops happening, the pagemap probe reads the wrong
-    # entries, and the guard-page offset lands mid-page.
+    # The unit of the readability probes, and the length Crystal passes to
+    # `mprotect` for a fiber stack's guard. It is not the kernel's page size,
+    # and nothing that has to be in that unit uses it: `madvise` alignment is
+    # `Platform.host_page_size` (`sysconf`), and the pagemap index and a guard's
+    # real extent are `runtime_page_size`. A probe answers for the page its
+    # address lies in, so probing in 4 KiB steps is right on a 16 or 64 KiB
+    # kernel too, only more often.
     #
-    # Keeping the constant (it is on hot paths) and checking it once at startup
-    # is the trade: `Roots.check_page_size` says so on stderr rather than
-    # leaving a host to behave differently for reasons nobody can see. Written
-    # 2026-09-14, while three CI runs in about thirty had the same five
-    # chunk-retention specs fail together on `test (aarch64 native)` and 80
-    # local runs had none.
+    # Until 2026-09-29 the pagemap low-water probe and the guard offsets used
+    # this constant, and `GC.init` warned about it on every non-4 KiB kernel —
+    # including every Apple Silicon Mac, where both were already asked of the
+    # OS and the warning was wrong (`bench/log/linux/2026-09-29-page-size-units/`).
     PAGE_SIZE = 4096_u64
 
-    @@page_size_checked = false
-
-    # The kernel's page size, as `sysconf` reports it at `GC.init`; `PAGE_SIZE`
-    # until then. Where a guard's real extent matters, this is the unit: a
-    # 4 KiB `mprotect` on a 16 KiB-page kernel protects the whole 16 KiB page.
-    # `uninitialized`, read as 0 until set: an initializer would be a Crystal
-    # `once`, and `GC.init` runs before there is a fiber to run it on.
+    # The kernel's page size, from `sysconf` on first use. Where a guard's real
+    # extent matters this is the unit: a 4 KiB `mprotect` on a 16 KiB-page
+    # kernel protects the whole 16 KiB page. `uninitialized`, read as 0 until
+    # set: an initializer would be a Crystal `once`, and `GC.init` runs before
+    # there is a fiber to run it on. Filling it is idempotent, so a race between
+    # two first readers writes the same value twice.
     @@runtime_page_size = uninitialized UInt64
 
     def self.runtime_page_size : UInt64
       v = @@runtime_page_size
-      v == 0 ? PAGE_SIZE : v
-    end
-
-    # Called once from `GC.init`. Signal-safety is not a concern here — this
-    # runs before any collection — but allocation is: `RawOut` only.
-    def self.check_page_size : Nil
-      return if @@page_size_checked
-      @@page_size_checked = true
+      return v unless v == 0
       {% if flag?(:unix) %}
         actual = LibC.sysconf(LibC::SC_PAGESIZE)
-        @@runtime_page_size = actual.to_u64 if actual > 0
-        return if actual <= 0 || actual.to_u64 == PAGE_SIZE
-        buf = uninitialized UInt8[RawOut::LIMIT]
-        n = RawOut.append(buf.to_unsafe, 0, "gcry: WARNING: this kernel's page size is ")
-        n = RawOut.append_u64(buf.to_unsafe, n, actual.to_u64)
-        n = RawOut.append(buf.to_unsafe, n, " and gcry is compiled for ")
-        n = RawOut.append_u64(buf.to_unsafe, n, PAGE_SIZE)
-        n = RawOut.append(buf.to_unsafe, n,
-          ". Page-aligned decisions — dormancy's madvise, the pagemap low-water probe, " \
-          "the fiber guard offset — are computed on the wrong unit here\n")
-        RawOut.flush(buf.to_unsafe, n)
+        if actual > 0
+          @@runtime_page_size = actual.to_u64
+          return actual.to_u64
+        end
       {% end %}
+      PAGE_SIZE
     end
 
     @@probe_rd = -1

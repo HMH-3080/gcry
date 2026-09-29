@@ -10,11 +10,7 @@ require "./spec_helper"
 # `/proc/self/pagemap` (`src/gcry/platform/darwin_low_water.cr`): a second
 # implementation has to earn the assertion on its own.
 private def low_water_page : UInt64
-  {% if flag?(:darwin) %}
-    Gcry::Platform.host_page_size
-  {% else %}
-    Gcry::Roots::PAGE_SIZE
-  {% end %}
+  Gcry::Roots.runtime_page_size
 end
 
 {% if flag?(:linux) || flag?(:darwin) %}

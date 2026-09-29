@@ -73,7 +73,12 @@ module Gcry
         return low
       end
 
-      page = Roots::PAGE_SIZE
+      # The kernel's page, not 4 KiB: the entry index is a virtual page number
+      # in the kernel's unit. On a 16 or 64 KiB kernel a 4 KiB stride reads the
+      # entry of an address 4 or 16 times larger — past the end of the address
+      # space, where the read fails and the skip turns itself off for good, or
+      # an unmapped page, which reads "never faulted" and skips live stack.
+      page = Roots.runtime_page_size
       first = low // page
       last = (high + page - 1) // page # exclusive
       idx = first
