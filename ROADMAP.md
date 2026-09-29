@@ -728,7 +728,18 @@ kept finding the rest.
       after it went unscanned. `make fiber-list-exit-race`: 425–681 of 2 560
       stack-held objects lost a run unlocked, 0 with the fiber list held
       across the stop. `bench/log/linux/2026-09-29-fiber-list-exit/FINDINGS.md`
-- [ ] **A thread gcry has not heard of yet is neither stopped nor scanned.**
+- [x] **A thread gcry has not heard of yet is neither stopped nor scanned —
+      closed 2026-09-29.** Harmless when it is being born, and a real defect
+      when it is dying. **Born:** Crystal 1.21's `Thread#start` pushes itself
+      onto the thread list first, and the push waits on the mutex the stop
+      holds (Linux, Windows). On macOS, which does not hold it, the newborn's
+      first allocation waits in `allocate`. So it touches no heap during a
+      stop, and 45 gdb snapshots inside stops found no thread running user
+      code. **Dying:** a thread off the thread list but not yet off the fiber
+      list was not suspended, and its `Fiber.inactive` cut the collector's
+      fiber walk short. That is fixed (the item above).
+      `bench/log/linux/2026-09-29-fiber-list-exit/FINDINGS.md`
+      The history:
       Reached from the fifth aarch64 crash, which showed a `Thread`'s
       `@system_handle` read out of a **freed, poisoned block**. Two facts are
       measured: that poison, and that `GC.pthread_create` is a bare passthrough
