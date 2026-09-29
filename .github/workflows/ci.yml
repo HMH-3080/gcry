@@ -905,6 +905,12 @@ jobs:
         run: |
           make static-raw-buffer-roots
 
+      # Linux covers a spawned thread's thread-locals through its stack
+      # mapping; macOS and Windows do not, and Crystal does not ask them to.
+      - name: A spawned thread's thread-local stays a root on Linux
+        run: |
+          make thread-tls-roots
+
       # And the question the holder search opened: is the mark complete at all?
       # Walks every marked block after mark and before sweep and names any
       # pointer into a block the sweep is about to free. The gate plants one it

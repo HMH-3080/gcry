@@ -1830,6 +1830,16 @@ index-grow-race: $(BIN)
 # `Slice(String)`) is a static root, and the static type_id gate that was the
 # default until 2026-09-29 swept the buffer. Shipped must read every string
 # back; `GCRY_TYPE_ID_GATE=1` must lose the buffers in every run. ~5 s.
+# A spawned thread's `@[ThreadLocal]` is a root on Linux, where glibc puts
+# the block in the thread's stack mapping; not on macOS or Windows, which is
+# Crystal's documented contract (object.cr, `thread_local`). Linux only, so
+# the coverage it does have does not regress. ~5 s.
+.PHONY: thread-tls-roots
+thread-tls-roots: $(BIN)
+	$(CRYSTAL) build -Dgc_none bench/thread_tls_roots.cr -o $(BIN)/thread_tls_roots --error-trace
+	$(BIN)/thread_tls_roots
+	$(BIN)/thread_tls_roots --control
+
 .PHONY: static-raw-buffer-roots
 static-raw-buffer-roots: $(BIN)
 	$(CRYSTAL) build -Dgc_none bench/static_raw_buffer_roots.cr -o $(BIN)/static_raw_buffer_roots --error-trace
