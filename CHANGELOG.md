@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.31.0] - 2026-09-29
+
 ### Changed
 
 - **Parked fibers on Crystal-allocated stacks are read without a syscall
@@ -5779,7 +5781,8 @@ now measured (not estimated).
 - Concurrent mark / compacting / precise GC need compiler cooperation.
 - Optional upstream `-Dgc_gcry` backend remains out of scope (shard override is enough).
 
-[Unreleased]: https://github.com/sdogruyol/gcry/compare/v0.30.0...HEAD
+[Unreleased]: https://github.com/sdogruyol/gcry/compare/v0.31.0...HEAD
+[0.31.0]: https://github.com/sdogruyol/gcry/compare/v0.30.0...v0.31.0
 [0.30.0]: https://github.com/sdogruyol/gcry/compare/v0.29.0...v0.30.0
 [0.29.0]: https://github.com/sdogruyol/gcry/compare/v0.28.2...v0.29.0
 [0.28.2]: https://github.com/sdogruyol/gcry/compare/v0.28.1...v0.28.2
