@@ -1771,7 +1771,7 @@ module Gcry
       @thread_census_recheck = false
       return if @thread_census_rechecks >= CENSUS_LOCATE_LIMIT
       @thread_census_rechecks &+= 1
-      buf = uninitialized UInt8[128]
+      buf = uninitialized UInt8[RawOut::LIMIT]
       len = RawOut.append(buf.to_unsafe, 0, "gcry: thread census — end of the stop, collection ")
       len = RawOut.append_u64(buf.to_unsafe, len, @collections)
       len = RawOut.append(buf.to_unsafe, len, ":\n")
