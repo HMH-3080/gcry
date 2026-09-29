@@ -1809,8 +1809,26 @@ module Gcry
 
       site = Platform.thread_syscall_site(tid)
       unless site
-        # On-CPU: a spinning thread has no syscall frame. Not an error.
-        len = RawOut.append(p, len, " is on-CPU, so it has no syscall frame to report\n")
+        # On-CPU: a spinning thread has no syscall frame. Not an error. The
+        # state letter and the lifetime CPU time narrow it down: gone means
+        # the task exited, and 0 ns means it has never run. `R` with CPU time
+        # does not say the thread is running user code. A suspended mutator
+        # preempted inside the handler, between its acknowledgement and
+        # `sigsuspend`, reads exactly that on a loaded host.
+        len = RawOut.append(p, len, " is on-CPU, so it has no syscall frame to report (state ")
+        state = Platform.task_state(tid)
+        if state == 0_u8
+          len = RawOut.append(p, len, "gone")
+        else
+          buf[len] = state
+          len += 1
+          if cpu = Platform.task_cpu_ns(tid)
+            len = RawOut.append(p, len, ", ")
+            len = RawOut.append_u64(p, len, cpu)
+            len = RawOut.append(p, len, " ns on a CPU")
+          end
+        end
+        len = RawOut.append(p, len, ")\n")
         RawOut.flush(p, len)
         return
       end

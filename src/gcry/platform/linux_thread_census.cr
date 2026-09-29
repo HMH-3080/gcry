@@ -302,7 +302,7 @@ module Gcry
     # a task list sampled from /proc is a snapshot of a moving set.
     private def self.read_comm(tid : Int32, dst : UInt8*, cap : Int32) : Int32
       path = uninitialized UInt8[64]
-      len = build_comm_path(path.to_unsafe, tid)
+      len = build_task_path(path.to_unsafe, tid, "/comm")
       return 0 if len == 0
       fd = LibC.open(path.to_unsafe.as(LibC::Char*), 0)
       return 0 if fd < 0
@@ -316,10 +316,56 @@ module Gcry
       size
     end
 
-    # "/proc/self/task/<tid>/comm\0", built by hand: interpolation allocates.
-    private def self.build_comm_path(dst : UInt8*, tid : Int32) : Int32
+    # The scheduler state letter of a task (`R`, `S`, `D`, `Z`, ...), from
+    # `/proc/self/task/<tid>/stat`, or 0 when the task is gone. The letter is
+    # the first field after the last `)`, since `comm` can itself hold one.
+    #
+    # `/proc/<tid>/syscall` reads "running" for more than a thread executing
+    # user code: a task already inside the kernel's exit path, or one not yet
+    # returned from `clone`, reads the same. Without the letter the census
+    # could only say "on-CPU" about all of them.
+    def self.task_state(tid : Int32) : UInt8
+      path = uninitialized UInt8[64]
+      return 0_u8 if build_task_path(path.to_unsafe, tid, "/stat") == 0
+      fd = LibC.open(path.to_unsafe.as(LibC::Char*), 0)
+      return 0_u8 if fd < 0
+      buf = uninitialized UInt8[512]
+      n = LibC.read(fd, buf.to_unsafe.as(Void*), LibC::SizeT.new(buf.size))
+      LibC.close(fd)
+      return 0_u8 if n <= 0
+      i = n.to_i32 - 1
+      while i >= 0 && buf[i] != ')'.ord.to_u8
+        i -= 1
+      end
+      return 0_u8 if i < 0 || i + 2 >= n
+      buf[i + 2]
+    end
+
+    # Nanoseconds the task has spent on a CPU, the first field of
+    # `/proc/self/task/<tid>/schedstat`, or nil when it cannot be read. Zero
+    # means it has never run: a thread `clone` made that is still waiting for
+    # its first slice.
+    def self.task_cpu_ns(tid : Int32) : UInt64?
+      path = uninitialized UInt8[64]
+      return nil if build_task_path(path.to_unsafe, tid, "/schedstat") == 0
+      fd = LibC.open(path.to_unsafe.as(LibC::Char*), 0)
+      return nil if fd < 0
+      buf = uninitialized UInt8[128]
+      n = LibC.read(fd, buf.to_unsafe.as(Void*), LibC::SizeT.new(buf.size))
+      LibC.close(fd)
+      return nil if n <= 0
+      value = 0_u64
+      i = 0
+      while i < n && buf[i] >= '0'.ord.to_u8 && buf[i] <= '9'.ord.to_u8
+        value = value &* 10 &+ (buf[i] - '0'.ord.to_u8)
+        i += 1
+      end
+      i == 0 ? nil : value
+    end
+
+    # "/proc/self/task/<tid><suffix>\0", built by hand: interpolation allocates.
+    private def self.build_task_path(dst : UInt8*, tid : Int32, suffix : String) : Int32
       prefix = "/proc/self/task/"
-      suffix = "/comm"
       i = 0
       while i < prefix.bytesize
         dst[i] = prefix.to_unsafe[i]

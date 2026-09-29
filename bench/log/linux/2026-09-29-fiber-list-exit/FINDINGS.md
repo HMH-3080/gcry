@@ -84,6 +84,31 @@ Why it cannot deadlock:
 | shipped | 3 | 0, 0, 0 |
 | `GCRY_FIBER_LIST_UNLOCKED=1` | 5 | 450, 446, 597, 681, 425 |
 
+## The birth side of the same question
+
+The open item had started from threads being *born* during a stop. Crystal
+1.21's `Thread#start` puts `Thread.threads.push(self)` first, and the push
+takes the thread list's mutex, which Linux and Windows hold for the whole
+stop. So a newborn is either before the push, where it has touched no heap,
+or blocked in it. macOS does not take that mutex, but a newborn's first
+allocation (its main `Fiber`) waits in `allocate` for the resume.
+
+Observed, on `thread_storm --workers=16` with `GCRY_STAGED_WAIT=0`:
+- **45 gdb snapshots taken inside stops** (`GCRY_STW_TEST_STALL_MS=300`,
+  the child consenting through `PR_SET_PTRACER`). Every thread was either
+  suspended in `sigsuspend`, the collector, SYSMON waiting at the monitor
+  gate, or gcry's idle thread. No thread was running user code.
+- **The census, at the end of 30 stops with a gap.** Tasks it could not
+  account for were in one of three states:
+  - in `futex` (2 cases);
+  - gone, having exited (14);
+  - `R` with lifetime CPU time (34).
+
+  `R` is also what a suspended mutator reads when it was preempted between
+  its acknowledgement and `sigsuspend`, and the host was running a 5-lane
+  campaign. So the census alone cannot say more. The snapshots can, and
+  they found nothing.
+
 ## What it may explain
 
 Nothing is attributed yet. [INFERENCE] The shape matches losses that were
