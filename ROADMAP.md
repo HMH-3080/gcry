@@ -4071,7 +4071,11 @@ Target: Match Boehm on the workloads Crystal users actually run.
       tuned 1.70 ms on Linux CI and 1.11 ms on macOS, from parked fibers
       scanned from their SP.** `GCRY_SOUND=1` keeps its whole scan, 3.5–4.6×
       that; whether it should share the parked-SP path is a policy question
-      (docs/SOUND-DEFAULTS.md). The EC4 residual was
+      (docs/SOUND-DEFAULTS.md). **0.31.0 (2026-09-29): EC4 tuned 1.21 ms on
+      Linux CI, 1.06 on macOS; EC1 0.74 / 0.61 ms.** gcry's own layout tables
+      left the static roots, pooled fiber stacks stopped being probed, and the
+      world restarts in one batch
+      (`bench/log/linux/2026-09-29-pause-cumulative/`). The EC4 residual was
       `GCRY_SOUND=1`'s, and quoting it as a ratio has become misleading twice
       over. **9950X, before the default path got the skip:** tuned 7.1 ms,
       sound 13.0 ms — **+83%**. **i3-12100F, after:** tuned 3.60 ms, sound
