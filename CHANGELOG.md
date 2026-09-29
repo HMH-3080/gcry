@@ -45,6 +45,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   kernel's size, and nothing it named uses the compiled unit any more. No
   change on 4 KiB kernels (`bench/log/linux/2026-09-29-page-size-units/`).
 
+- **macOS: a collection could hang while another thread was being created.**
+  To stop the world, gcry looked up each thread's Mach port and then
+  suspended it, one thread at a time. That lookup (`pthread_mach_thread_np`)
+  takes libpthread's global thread-list lock, and `pthread_create` holds that
+  lock while it links the new thread in. If the thread creating another was
+  suspended first, the next lookup waited forever. `make thread-birth-fiber`
+  hung in 24 of 50 runs on macos-latest. Now every port and stack bound is
+  resolved before any thread is suspended, the resume and the stack scan use
+  that table, and a thread that joins the list mid-stop makes the stop
+  resolve again. 20 of 20 clean after the fix
+  (`bench/log/macos/2026-09-29-pthread-list-lock/`).
+
+- **Windows and macOS: the main thread's thread-locals left the root set
+  after 64 collections on another thread.** Every 64 major collections the
+  static-root ranges are rebuilt by whichever thread is collecting. The
+  main thread's thread-local block was located through a gcry
+  `@[ThreadLocal]`, which on a spawned thread names that thread's block.
+  After such a rebuild, anything held only in a main-thread thread-local
+  could be freed. The range is now taken once, at startup, and reused.
+  `bench/tls_roots.cr --collect-elsewhere`, part of `make tls-roots` and the
+  Windows job: the block was lost in 5 of 5 runs on each platform before the
+  fix and in 0 of 5 after (`bench/log/linux/2026-09-29-tls-refresh-thread/`).
+
 ### Changed
 
 - **The page blacklist is off by default.** Its only input was the static
