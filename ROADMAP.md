@@ -3697,8 +3697,13 @@ draw of `bench/log/macos/2026-08-10-053800/` — which is what makes it schedula
       which pagemap reports present, so the low-water skip was lost on it for
       good. Fixed: EC4 pause tuned **4.15 → 1.78 ms**, sound **6.60 → 2.15 ms**.
       `bench/log/linux/2026-09-26-sysmon-guard-scan/FINDINGS.md`
-- [ ] **Windows: `tls-roots` loses its thread-local-held block about 1 run in
-      15 (2026-09-29).** A probe branch ran the harness 100 times on the
+- [x] **Windows: `tls-roots` loses its thread-local-held block about 1 run in
+      15 (2026-09-29) — explained and fixed the same day.** The victim was a
+      raw `GC.malloc` buffer, which the static-root type-id gate rejects, so
+      the arm passed only when a stale stack word kept it. An atomic victim
+      gives 100 of 100 held and 100 of 100 red with `GCRY_TLS_ROOTS=0` on the
+      Windows runner. `bench/log/linux/2026-09-29-tls-roots-gate/FINDINGS.md`
+      The original note: A probe branch ran the harness 100 times on the
       `windows x86_64, default` runner with the fiber list held: 6 failed. It
       ran 40 times with `GCRY_FIBER_LIST_UNLOCKED=1`: 7 failed. So this does
       not come from the fiber-list lock, and the job had gone red once in 90
