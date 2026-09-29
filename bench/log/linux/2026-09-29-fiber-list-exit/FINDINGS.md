@@ -161,3 +161,9 @@ likely: threads that are starting up block on that mutex during a stop, get
 suspended inside the wait, and receive the redundant signal while still in
 their handler. `make stw-epoch` passes every arm after the change, with both
 controls still red.
+
+## Stress campaign on `e957fa4`
+
+Both fixes were in, and the default-configuration campaign ran five lanes for
+4 h (`campaign-035-summary.md`): **3 684 runs, 20 lane-hours, 0 failures,
+0 timeouts.**
