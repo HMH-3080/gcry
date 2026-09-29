@@ -54,6 +54,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   blocks in a Kemal EC4 run and changed neither pause, RSS nor req/s.
   `GCRY_BLACKLIST=1` turns it on; `GCRY_DISABLE_BLACKLIST` is gone.
 
+- **A cycle in the chunk list aborts with a report instead of spinning.**
+  `unlink_chunk` found a chunk's predecessor by walking the list, and it
+  spun for 900 s once in a stress campaign (`pattern_fuzz`, about 1 in
+  1 200 runs). The walk only fails to end if the list has a cycle. It is now
+  bounded at twice the index, and past that it prints where the cycle starts,
+  its length and that chunk's flags, then aborts.
+
 ## [0.31.1] - 2026-09-29
 
 ### Fixed

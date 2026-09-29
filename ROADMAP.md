@@ -3738,6 +3738,16 @@ draw of `bench/log/macos/2026-08-10-053800/` — which is what makes it schedula
       full load; 0 of 344 in the two campaigns before. The next sighting
       wants `GCRY_TRACE_LARGE=1`.
       `bench/log/linux/2026-09-28-dormant-flush-large-release/FINDINGS.md`
+- [ ] **The chunk list formed a cycle once (`pattern_fuzz` seed 20102,
+      2026-09-29).** Campaign-036 on `cda5dec`: main spun for 900 s in
+      `unlink_chunk`'s predecessor walk, under `GC.free` → `trim_large_cache`,
+      in the Stride phase (array growth up to 128 KiB, so large chunks). Every
+      other thread was asleep. That walk only fails to end if the list has a
+      cycle. 1 in about 1 200 `pattern_fuzz` runs across campaigns 030–036;
+      the same seed passed 3 of 3 locally. The walk is now bounded at twice
+      the index and aborts with the cycle's entry chunk, its length and the
+      entry chunk's flags. So the next sighting names which path linked a
+      chunk in twice instead of spinning.
 - [ ] **Attribute the residual per-rep spread** — open below. Until it closes it
       bounds every perf claim either release makes: ±2–3pp on phase timings, ±1pp
       on post-GC RSS, at 12 reps.

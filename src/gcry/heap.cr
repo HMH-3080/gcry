@@ -2708,6 +2708,13 @@ module Gcry
           @chunks = target.value.next
         else
           prev = @chunks
+          # Every chunk on the list is indexed, so a walk more than twice the
+          # index long (slack for chunks mid-flight) has gone round a cycle.
+          # It did once — `pattern_fuzz` seed 20102, spinning here for 900 s
+          # with every other thread asleep (campaign-036, 2026-09-29) — and a
+          # spin says nothing about how the cycle formed. Stop and name it.
+          limit = @chunk_index_count.to_u64 &* 2 &+ 64
+          steps = 0_u64
           while prev
             if prev.value.next == target
               # Flags are updated under the class lock. A whole-header copy
@@ -2716,9 +2723,75 @@ module Gcry
               break
             end
             prev = prev.value.next
+            steps &+= 1
+            report_chunk_list_cycle(target, limit) if steps > limit
           end
         end
       end
+    end
+
+    # The chunk list has a cycle (`unlink_chunk`'s walk passed *limit*).
+    # Floyd from the head, bounded, then one line naming where the cycle
+    # starts and how long it is, and the chunk there — a chunk linked in twice
+    # is the likely shape, and its flags say which path linked it. Aborts: the
+    # list cannot be repaired from here, and the alternative is the spin.
+    private def report_chunk_list_cycle(target : ChunkHeader*, limit : UInt64) : NoReturn
+      head = @chunks
+      slow = head
+      fast = head
+      met = false
+      i = 0_u64
+      while fast && fast.value.next && i <= limit
+        slow = slow.value.next
+        fast = fast.value.next.value.next
+        i &+= 1
+        if slow == fast
+          met = true
+          break
+        end
+      end
+      start = Pointer(ChunkHeader).null
+      length = 0_u64
+      tail = 0_u64
+      if met
+        start = head
+        while start != slow && tail <= limit
+          start = start.value.next
+          slow = slow.value.next
+          tail &+= 1
+        end
+        c = start.value.next
+        length = 1_u64
+        while c != start && length <= limit
+          c = c.value.next
+          length &+= 1
+        end
+      end
+      buf = uninitialized UInt8[RawOut::LIMIT]
+      n = RawOut.append(buf.to_unsafe, 0, "gcry: FATAL chunk list cycle while unlinking 0x")
+      n = RawOut.append_hex(buf.to_unsafe, n, target.address)
+      n = RawOut.append(buf.to_unsafe, n, " (")
+      n = RawOut.append_u64(buf.to_unsafe, n, @chunk_index_count.to_u64)
+      n = RawOut.append(buf.to_unsafe, n, " indexed): ")
+      if start.null?
+        n = RawOut.append(buf.to_unsafe, n, "no cycle from the head, so the walk was longer than the index — a listed chunk that is not indexed\n")
+      else
+        n = RawOut.append(buf.to_unsafe, n, "enters at 0x")
+        n = RawOut.append_hex(buf.to_unsafe, n, start.address)
+        n = RawOut.append(buf.to_unsafe, n, " after ")
+        n = RawOut.append_u64(buf.to_unsafe, n, tail)
+        n = RawOut.append(buf.to_unsafe, n, " from the head, length ")
+        n = RawOut.append_u64(buf.to_unsafe, n, length)
+        n = RawOut.append(buf.to_unsafe, n, "; that chunk: mapped ")
+        n = RawOut.append_u64(buf.to_unsafe, n, start.value.mapped_bytes)
+        n = RawOut.append(buf.to_unsafe, n, " size_class ")
+        n = RawOut.append_u64(buf.to_unsafe, n, start.value.size_class.to_u64)
+        n = RawOut.append(buf.to_unsafe, n, " flags 0x")
+        n = RawOut.append_hex(buf.to_unsafe, n, start.value.flags.to_u64)
+        n = RawOut.append(buf.to_unsafe, n, start == target ? " (the target itself)\n" : "\n")
+      end
+      RawOut.flush(buf.to_unsafe, n)
+      LibC.abort
     end
 
     # Small-allocation searches hold their class lock, but trim holds the
