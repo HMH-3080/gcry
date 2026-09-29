@@ -3730,6 +3730,14 @@ draw of `bench/log/macos/2026-08-10-053800/` — which is what makes it schedula
       so the next one fails the step with every thread's stack instead of
       eating the job. Headered TLAB is unsupported; the default layout was
       never seen doing this.
+      **Probable cause found (2026-09-29), still open until the sampler has
+      run clean long enough to say so.** `make thread-birth-fiber` hung on
+      macOS in 24 of 50 runs. `sample` showed the stop asking libpthread
+      for a thread's Mach port while a suspended thread held libpthread's
+      list lock inside `pthread_create`. The sampler's Parallel contexts
+      start their threads while other workers allocate and collect, which is
+      the same shape. Fixed by resolving every port and bound before the first suspend:
+      0 stalls in 20 runs (`bench/log/macos/2026-09-29-pthread-list-lock/`).
 - [ ] **A large chunk released with its block still allocated (`dormant_flush`,
       2026-09-28).** Two consecutive faults in the first minutes of a
       campaign on `2a46123`. A worker wrote into its own buffer after the
