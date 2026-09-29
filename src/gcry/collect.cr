@@ -215,7 +215,8 @@ module Gcry
     property scan_unaligned_candidates : Bool = false
     # Reject ambient root candidates (stack/static) whose payload type_id looks
     # absurd. Heap-scan marks stay ungated so Array/Hash buffers remain reachable.
-    # Process GC default-on; GCRY_DISABLE_TYPE_ID_GATE=1 escapes.
+    # Off by default since 2026-09-29 (it swept raw buffers a class variable
+    # held); `GCRY_TYPE_ID_GATE=1` turns it on for static roots.
     property type_id_gate : Bool = false
     # When true with type_id_gate, also gate Stack/Thread ambient roots (RSS
     # trade-off; unsafe for Channel buffers — see mark_root_candidate).

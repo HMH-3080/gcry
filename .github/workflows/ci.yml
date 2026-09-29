@@ -899,6 +899,12 @@ jobs:
         run: |
           make fiber-list-exit-race
 
+      # A class variable's raw buffer of references is a root. The static
+      # type_id gate swept it; the gated arm must still lose it.
+      - name: A class variable's raw buffer survives
+        run: |
+          make static-raw-buffer-roots
+
       # And the question the holder search opened: is the mark complete at all?
       # Walks every marked block after mark and before sweep and names any
       # pointer into a block the sweep is about to free. The gate plants one it
@@ -2146,6 +2152,7 @@ jobs:
           # children often hang rather than lose objects, which also counts,
           # so their wait is capped to keep this job inside its budget.
           FIBER_LIST_RED_TIMEOUT_S=40 make fiber-list-exit-race
+          make static-raw-buffer-roots
           make perf-baseline
           make occupied-release
 

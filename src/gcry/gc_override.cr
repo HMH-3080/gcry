@@ -124,12 +124,23 @@ module GC
       # Escape: GCRY_LARGE_CACHE=<bytes> (adaptive may grow from a non-zero floor).
       heap.large_cache_retain = 0_u64
     {% end %}
-    # type_id_gate on *static* ambient roots (BSS false hits). Stack/thread
-    # roots stay ungated: Channel/Deque buffers and similar raw allocations
-    # fail the type_id heuristic and were dropped → Log::AsyncDispatcher SEGV
-    # under frequent collect. Escape to also gate stacks: GCRY_TYPE_ID_GATE=1.
-    # Heap scan still uses mark_candidate (no gate) for Array/Hash buffers.
-    heap.type_id_gate = true
+    # No type_id gate on any ambient root, static ones included.
+    #
+    # Until 2026-09-29 static roots were gated: a class variable, constant or
+    # main-thread thread-local that pointed at a non-atomic block was dropped
+    # unless the block's first `Int32` looked like a type id. A raw buffer of
+    # references does not: `@@buf = Pointer(String).malloc(n)` or
+    # `@@items = Slice(String).new(n) { ... }` held its first element's
+    # address there, so the buffer was swept while the class variable still
+    # named it, and reading it crashed in 3 of 3 runs. The gate had been
+    # measured a no-op for RSS when it went in, and on Kemal today it rejects
+    # one static root in a whole run, with pause, post-GC RSS and req/s
+    # unchanged at EC1 and EC4
+    # (`bench/log/linux/2026-09-29-static-type-id-gate/`). Stack roots were
+    # never gated for the same reason (Channel/Deque buffers, the
+    # Log::AsyncDispatcher SEGV). `GCRY_TYPE_ID_GATE=1` restores the static
+    # gate.
+    heap.type_id_gate = false
     heap.type_id_gate_stacks = false
     # Page blacklist: previously off on Darwin (freelist abandonment spiral under
     # all-conservative scanning). Re-enabled in P2.3 era now that layout-precise
@@ -669,16 +680,9 @@ module GC
       heap.scan_unaligned_candidates = false
     end
 
-    if env_flag_one?("GCRY_TYPE_ID_GATE")
-      # Opt into pre-fix behavior: gate stack/thread ambient roots too.
-      heap.type_id_gate = true
-      heap.type_id_gate_stacks = true
-    end
-
-    if env_flag_one?("GCRY_DISABLE_TYPE_ID_GATE")
-      heap.type_id_gate = false
-      heap.type_id_gate_stacks = false
-    end
+    # Research only: the static-root type_id gate, the default until
+    # 2026-09-29. `make static-raw-buffer-roots` is its red arm.
+    heap.type_id_gate = true if env_flag_one?("GCRY_TYPE_ID_GATE")
 
     if env_flag_one?("GCRY_DISABLE_STATIC_ROOTS")
       heap.scan_static_roots = false

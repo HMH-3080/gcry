@@ -213,9 +213,11 @@ Freelist-era history (pre-0.24.0, `GCRY_BITMAP_ALLOC=0`; `GCRY_TIGHT_GROW` is fr
 ### What the default heuristics cost
 
 Every number above is measured with gcry's **root-completeness heuristics
-armed** — base-pointer-only ambient roots, the static-root `type_id` gate,
-256 KiB STW stack lags. Each can decline to mark a pointer that is genuinely
-live, so those numbers price a collector that is allowed to guess.
+armed** — the 256 KiB STW stack lags and, until
+2026-09-29, the static-root `type_id` gate, which was then found to sweep a
+class variable's raw buffer of references and taken out of the default. Each
+can decline to mark a pointer that is genuinely live, so those numbers price
+a collector that is allowed to guess.
 `GCRY_SOUND=1` turns the whole class off:
 
 ```sh

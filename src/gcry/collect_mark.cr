@@ -30,12 +30,13 @@ module Gcry
     # interiors resolved unless GCRY_DISABLE_INTERIOR=1 (base-only cuts false
     # retention but frees buffers LLVM holds only by an interior pointer).
     #
-    # type_id_gate applies to *static* roots only by default. Applying it to
-    # stacks rejected live Channel/Deque buffers and similar raw allocations
-    # whose first word is not a Crystal type_id — Log::AsyncDispatcher then
-    # SEGVd under frequent collect (EC1 + GCRY_THRESHOLD=32KiB boot; also
-    # amplified Parallel HTTP pressure). Heap edges still use mark_candidate
-    # (no gate). Opt back into stack gating with GCRY_TYPE_ID_GATE=1.
+    # type_id_gate is off by default and, when on, applies to *static* roots
+    # only. On stacks it rejected live Channel/Deque buffers and similar raw
+    # allocations whose first word is not a Crystal type_id —
+    # Log::AsyncDispatcher then SEGVd under frequent collect. On static roots
+    # it swept a class variable's `Pointer(String)` buffer the same way, which
+    # is why it has been off since 2026-09-29. Heap edges use mark_candidate
+    # and were never gated.
     private def mark_root_candidate(pointer : Void*, source : RootSource = RootSource::Stack) : Nil
       gate = @type_id_gate && (source == RootSource::Static || @type_id_gate_stacks)
       {% if flag?(:gcry_hl_assert) %}

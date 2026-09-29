@@ -1821,6 +1821,15 @@ index-grow-race: $(BIN)
 # walk both widened. Shipped (fiber list held across the stop) must lose no
 # holder's object in any run; `GCRY_FIBER_LIST_UNLOCKED=1` must lose one in at
 # least one of five (measured: all five, 425-681 of 2 560 each). ~30 s.
+# A class variable holding a raw buffer of references (`Pointer(String)`,
+# `Slice(String)`) is a static root, and the static type_id gate that was the
+# default until 2026-09-29 swept the buffer. Shipped must read every string
+# back; `GCRY_TYPE_ID_GATE=1` must lose the buffers in every run. ~5 s.
+.PHONY: static-raw-buffer-roots
+static-raw-buffer-roots: $(BIN)
+	$(CRYSTAL) build -Dgc_none bench/static_raw_buffer_roots.cr -o $(BIN)/static_raw_buffer_roots --error-trace
+	$(BIN)/static_raw_buffer_roots
+
 .PHONY: fiber-list-exit-race
 fiber-list-exit-race: $(BIN)
 	$(CRYSTAL) build -Dgc_none bench/fiber_list_exit_race.cr -o $(BIN)/fiber_list_exit_race --error-trace

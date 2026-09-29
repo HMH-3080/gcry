@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **A raw buffer of references held only by a class variable was swept.**
+  Static roots (class variables, constants, the main thread's thread-locals)
+  went through a type-id gate that dropped any non-atomic block whose first
+  `Int32` did not look like a Crystal type id. `@@buf =
+  Pointer(String).malloc(n)` and `Slice(String)` buffers start with an
+  element's address, so they were swept while still referenced, and reading
+  them crashed in 3 of 3 runs. The gate is now off by default. On Kemal it
+  had rejected one static root in a whole run and moved neither pause,
+  post-GC RSS nor req/s. `GCRY_TYPE_ID_GATE=1` restores it for research, and
+  `GCRY_DISABLE_TYPE_ID_GATE` is gone. `make static-raw-buffer-roots`
+  (`bench/log/linux/2026-09-29-static-type-id-gate/`).
+
 ## [0.31.1] - 2026-09-29
 
 ### Fixed
