@@ -1621,6 +1621,10 @@ module Gcry
     # is sitting, which is the question a name leaves open.
     CENSUS_LOCATE_LIMIT = 4
     @thread_census_locates : Int32 = 0
+    # Set by `census_threads` when this stop found a task it cannot account
+    # for; `census_end_of_stop` looks at the tasks again before the resume.
+    @thread_census_recheck = false
+    @thread_census_rechecks : Int32 = 0
     # The **last** gap observed, and the last unexplained one, rather than the
     # largest. A gate that plants a thread and compares maxima across two
     # phases can be fooled by a transient: a thread that exists during the
@@ -1692,6 +1696,7 @@ module Gcry
       @thread_census_unexplained &+= 1 if unexplained > 0
       @thread_census_unexplained_max = unexplained if unexplained > @thread_census_unexplained_max
       @thread_census_unexplained_now = unexplained
+      @thread_census_recheck = unexplained > 0 && name_them
       # Against the **unexplained** gap, not the raw one. A gap made entirely
       # of gcry's own raw threads needs no staging record to be accounted
       # for, and measuring it against the raw gap made this line contradict
@@ -1747,6 +1752,33 @@ module Gcry
           "gcry: thread census — /proc/self/task could not be walked, so the gap is unnamed\n")
       end
       RawOut.flush(names.to_unsafe, nlen)
+    end
+
+    # The same tasks again, at the end of the stop, just before the resume.
+    #
+    # `census_threads` runs at the start of the stop, when a thread born a
+    # moment earlier is still in glibc's `start_thread` or in `thread_proc`, and
+    # reports as "on-CPU". What matters is what it does *during* the stop: a
+    # thread outside Crystal's list is not suspended, so if it could reach the
+    # heap it would race the collector. Crystal's `Thread#start` pushes itself
+    # onto the list before anything else, and the push takes the list's mutex,
+    # which the collector holds from before the signals until after the
+    # resume. So by this point such a thread should be parked in `futex`
+    # inside that push. A suspended mutator is in `rt_sigsuspend`; every other
+    # task is reported by the same code as at the start.
+    protected def census_end_of_stop : Nil
+      return unless @thread_census_recheck
+      @thread_census_recheck = false
+      return if @thread_census_rechecks >= CENSUS_LOCATE_LIMIT
+      @thread_census_rechecks &+= 1
+      buf = uninitialized UInt8[128]
+      len = RawOut.append(buf.to_unsafe, 0, "gcry: thread census — end of the stop, collection ")
+      len = RawOut.append_u64(buf.to_unsafe, len, @collections)
+      len = RawOut.append(buf.to_unsafe, len, ":\n")
+      RawOut.flush(buf.to_unsafe, len)
+      Platform.each_os_thread do |tid, comm, comm_len|
+        report_task_site(tid, comm, comm_len)
+      end
     end
 
     # Where one task is sitting: the syscall it is parked in and the user pc

@@ -784,6 +784,7 @@ module Gcry
           #
           # `GCRY_STW_LATE_CLEAR=1` restores the old order, which is how the
           # gate shows the reads coming back.
+          census_end_of_stop if @thread_census
           @world_stopped = false unless @stw_late_clear
           # **Before** the first resume as well, and for a different reason:
           # a duplicate suspend signal still in flight must find no stop in
