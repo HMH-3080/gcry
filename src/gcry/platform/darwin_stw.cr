@@ -406,9 +406,65 @@ module Gcry
         @@stop_bounds_misses
       end
 
+      # Rounds of resolve-and-suspend a stop takes before it proceeds with a
+      # thread listed but not in the table: born between the resolve walk and
+      # the end of the suspends. Each round costs a resume of everything the
+      # last one suspended.
+      STOP_RESOLVE_ROUNDS = 8
+
+      @@stop_rounds_retried = uninitialized UInt64
+      @@stop_rounds_exhausted = uninitialized UInt64
+
+      # Stops that had to resolve again because a thread joined the list
+      # mid-stop, and stops that gave up after `STOP_RESOLVE_ROUNDS` with one
+      # still unresolved (it runs through the stop unsuspended and unscanned).
+      def self.stop_rounds_retried : UInt64
+        @@stop_rounds_retried
+      end
+
+      def self.stop_rounds_exhausted : UInt64
+        @@stop_rounds_exhausted
+      end
+
       # Synchronous Mach stop of every Crystal OS thread except *current*.
       def self.stop_world_threads(current : ::Thread) : Nil
         ensure_stw_table
+        round = 0
+        while true
+          resolve_and_suspend(current)
+          break unless listed_unresolved?
+          round += 1
+          if round >= STOP_RESOLVE_ROUNDS
+            @@stop_rounds_exhausted &+= 1
+            break
+          end
+          @@stop_rounds_retried &+= 1
+          # Nothing may ask libpthread about a thread while any is suspended,
+          # so the newcomer is resolved by starting over.
+          resume_suspended_threads
+        end
+      end
+
+      # A thread on Crystal's list that the table does not have. Reads only
+      # Crystal objects, never libpthread, so it is safe with the world stopped.
+      private def self.listed_unresolved? : Bool
+        ::Thread.unsafe_each do |thread|
+          key = thread.to_unsafe.address.to_u64
+          found = false
+          i = 0
+          while i < @@stop_count
+            if @@stop_entries[i].id == key
+              found = true
+              break
+            end
+            i += 1
+          end
+          return true unless found
+        end
+        false
+      end
+
+      private def self.resolve_and_suspend(current : ::Thread) : Nil
         @@stw_port_count = 0
 
         # Size the capture table **before** suspending anyone: `malloc` with the
@@ -420,9 +476,7 @@ module Gcry
         StwSlots.reserve(n + 8)
         reserve_stop_entries(n + 8)
 
-        # Resolve, while every thread still runs. A thread that joins the list
-        # after this walk is not stopped, as one that joined after the old
-        # single walk passed it was not.
+        # Resolve, while every thread still runs.
         @@stop_count = 0
         ::Thread.unsafe_each do |thread|
           reserve_stop_entries(@@stop_count + 1)
