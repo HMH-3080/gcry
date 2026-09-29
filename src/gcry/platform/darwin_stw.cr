@@ -335,6 +335,77 @@ module Gcry
         end
       end
 
+      # Every thread about to be stopped, with its Mach port and stack bounds,
+      # resolved **before the first `thread_suspend`** and used from then until
+      # the world restarts.
+      #
+      # `pthread_mach_thread_np` and `pthread_get_stackaddr_np` validate a
+      # foreign `pthread_t` under libpthread's global `_pthread_list_lock`, and
+      # `pthread_create`, `pthread_join` and thread exit hold that lock too. A
+      # thread suspended inside one of them keeps it for the whole stop, so the
+      # next lookup of any other thread waits forever. That is how the collector
+      # hung: main suspended at `_pthread_create + 924`, the collector in
+      # `stop_world_threads` → `pthread_mach_thread_np` →
+      # `_os_unfair_lock_lock_slow` (`make thread-birth-fiber`, 24 of 50 runs on
+      # macos-latest, `bench/log/macos/2026-09-29-pthread-list-lock/`). The
+      # resume asked the same function about every thread, with the rest still
+      # suspended, and could hang the same way.
+      #
+      # libc `malloc`, grown only here, while nothing is frozen.
+      private struct StopEntry
+        property thread : UInt64 = 0_u64
+        property id : UInt64 = 0_u64
+        property port : UInt32 = 0_u32
+        property suspended : Bool = false
+        property lo : UInt64 = 0_u64
+        property hi : UInt64 = 0_u64
+      end
+
+      @@stop_entries = uninitialized Pointer(StopEntry)
+      @@stop_capacity = uninitialized Int32
+      @@stop_count = uninitialized Int32
+      @@stop_active = uninitialized Bool
+      @@stop_bounds_misses = uninitialized UInt64
+
+      private def self.reserve_stop_entries(want : Int32) : Nil
+        return if want <= @@stop_capacity
+        cap = @@stop_capacity < 16 ? 16 : @@stop_capacity
+        while cap < want
+          cap *= 2
+        end
+        grown = LibC.realloc(@@stop_entries.as(Void*), LibC::SizeT.new(cap) * sizeof(StopEntry))
+        raise "gcry: cannot size the Darwin stop table for #{cap} threads" if grown.null?
+        @@stop_entries = grown.as(Pointer(StopEntry))
+        @@stop_capacity = cap
+      end
+
+      # The bounds resolved for *id* at the start of the stop in progress, or
+      # nil for a thread that joined the list since — a lookup now could block
+      # on a suspended thread's lock. Counted, as Linux counts its misses.
+      def self.stop_stack_bounds(id : LibC::PthreadT) : {Void*, Void*}?
+        return nil unless @@stop_active
+        key = id.address.to_u64
+        i = 0
+        while i < @@stop_count
+          e = @@stop_entries[i]
+          if e.id == key
+            return nil if e.lo == 0 || e.hi <= e.lo
+            return {Pointer(Void).new(e.lo), Pointer(Void).new(e.hi)}
+          end
+          i += 1
+        end
+        @@stop_bounds_misses &+= 1
+        nil
+      end
+
+      def self.stop_active? : Bool
+        @@stop_active
+      end
+
+      def self.stop_bounds_misses : UInt64
+        @@stop_bounds_misses
+      end
+
       # Synchronous Mach stop of every Crystal OS thread except *current*.
       def self.stop_world_threads(current : ::Thread) : Nil
         ensure_stw_table
@@ -347,32 +418,55 @@ module Gcry
         n = 0
         ::Thread.unsafe_each { n += 1 }
         StwSlots.reserve(n + 8)
+        reserve_stop_entries(n + 8)
 
+        # Resolve, while every thread still runs. A thread that joins the list
+        # after this walk is not stopped, as one that joined after the old
+        # single walk passed it was not.
+        @@stop_count = 0
         ::Thread.unsafe_each do |thread|
-          next if thread == current
-
+          reserve_stop_entries(@@stop_count + 1)
           pthread = thread.to_unsafe
-          port = LibC.pthread_mach_thread_np(pthread)
-          next if port == 0
+          e = StopEntry.new
+          e.thread = thread.as(Void*).address
+          e.id = pthread.address.to_u64
+          e.port = thread == current ? 0_u32 : LibC.pthread_mach_thread_np(pthread)
+          if bounds = pthread_stack_bounds(pthread)
+            e.lo = bounds[0].address
+            e.hi = bounds[1].address
+          end
+          @@stop_entries[@@stop_count] = e
+          @@stop_count += 1
+        end
+        @@stop_active = true
 
+        i = 0
+        while i < @@stop_count
+          e = @@stop_entries[i]
+          i += 1
+          next if e.port == 0
+          thread = Pointer(Void).new(e.thread).as(::Thread)
           thread.@suspended.set(false)
 
-          kr = LibMach.thread_suspend(port)
+          kr = LibMach.thread_suspend(e.port)
           if kr != KERN_SUCCESS
-            resume_suspended_threads(current)
+            resume_suspended_threads
             raise "gcry: thread_suspend failed (kr=#{kr})"
           end
           @@stw_threads_suspended &+= 1
+          e.suspended = true
+          @@stop_entries[i - 1] = e
 
           # Only the control arm needs the table: the shipped resume walks the
-          # thread list. Recording unconditionally would keep a bound in the
+          # stop table. Recording unconditionally would keep a bound in the
           # stop that nothing reads.
           if @@stw_bounded_resume && @@stw_port_count < STW_BOUNDED_RESUME_SLOTS
-            @@stw_ports[@@stw_port_count] = port
+            @@stw_ports[@@stw_port_count] = e.port
             @@stw_port_count += 1
           end
 
-          capture_thread_state(port, pthread, slot_for(pthread))
+          pthread = Pointer(Void).new(e.id).as(LibC::PthreadT)
+          capture_thread_state(e.port, pthread, slot_for(pthread))
 
           thread.@suspended.set(true)
         end
@@ -386,35 +480,37 @@ module Gcry
             next if thread == current
             thread.@suspended.set(false)
           end
+          @@stop_active = false
           return
         end
 
-        resume_suspended_threads(current)
+        resume_suspended_threads
       end
 
-      # Resume by walking the thread list rather than a table of ports.
+      # Resume exactly the threads this stop suspended, from the stop table —
+      # sized to the thread count before the first suspend and grown with it,
+      # so it has no fixed bound. A fixed 64-entry port table left the 65th
+      # thread and up suspended forever
+      # (`bench/log/linux/2026-09-17-darwin-64-thread-cliff/`); walking the
+      # thread list instead asked `pthread_mach_thread_np` about every thread
+      # while the rest were still suspended (see the table above).
       #
-      # `stop_world_threads` suspends **every** non-current thread whose Mach
-      # port is non-zero, so that predicate is the record and the two walks
-      # cover the same set by construction — with no fixed bound between an
-      # unbounded stop and a 64-entry resume. That mismatch left the 65th thread
-      # and up suspended forever, which is a hang rather than a slow collection
-      # (`bench/log/linux/2026-09-17-darwin-64-thread-cliff/`).
-      #
-      # Only a `KERN_SUCCESS` is counted. `thread_resume` on a thread whose
-      # suspend count is already zero returns `KERN_FAILURE` and does nothing,
-      # so a thread born during the stop costs an inert call rather than a
-      # spurious wake; and if something outside gcry had suspended it, the
-      # resume *would* succeed and show up as `stw_threads_resumed` overtaking
-      # `stw_threads_suspended`.
-      private def self.resume_suspended_threads(current : ::Thread) : Nil
-        ::Thread.unsafe_each do |thread|
-          next if thread == current
-          port = LibC.pthread_mach_thread_np(thread.to_unsafe)
-          next if port == 0
-          @@stw_threads_resumed &+= 1 if LibMach.thread_resume(port) == KERN_SUCCESS
-          thread.@suspended.set(false)
+      # Only a `KERN_SUCCESS` is counted: if something outside gcry had also
+      # suspended a thread, the counts still pair, and a resume that fails
+      # shows up as `stw_threads_resumed` falling behind `stw_threads_suspended`.
+      private def self.resume_suspended_threads : Nil
+        i = 0
+        while i < @@stop_count
+          e = @@stop_entries[i]
+          if e.suspended
+            @@stw_threads_resumed &+= 1 if LibMach.thread_resume(e.port) == KERN_SUCCESS
+            Pointer(Void).new(e.thread).as(::Thread).@suspended.set(false)
+            e.suspended = false
+            @@stop_entries[i] = e
+          end
+          i += 1
         end
+        @@stop_active = false
       end
 
       # Pre-fix resume, reachable only through `GCRY_STW_BOUNDED_RESUME=1`.

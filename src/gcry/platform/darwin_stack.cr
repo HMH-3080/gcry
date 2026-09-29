@@ -28,11 +28,12 @@ module Gcry
       {% end %}
     end
 
-    # Same API as the Linux snapshot, and deliberately not the same mechanism.
-    # Linux cannot call `pthread_getattr_np` under STW — it locks the target's
-    # descriptor, which a frozen thread can be holding (see linux_stack.cr).
-    # Darwin's accessors only read the descriptor: no lock, no allocation. So
-    # there is nothing to snapshot here and the lookup answers directly.
+    # Same API as the Linux snapshot, and the same reason, reached late.
+    # `pthread_get_stackaddr_np` on a thread other than the caller validates it
+    # under libpthread's global list lock, which a suspended thread can hold
+    # for the whole stop. So during a stop the bounds come from the table the
+    # stop resolved before suspending anyone (`darwin_stw.cr`), and a thread
+    # that is not in it has none. Outside a stop the lookup is direct.
     def self.begin_stack_bounds_snapshot : Nil
     end
 
@@ -55,16 +56,23 @@ module Gcry
     end
 
     def self.snapshotted_stack_bounds(thread : LibC::PthreadT) : {Void*, Void*}?
+      {% if flag?(:darwin) %}
+        return stop_stack_bounds(thread) if stop_active?
+      {% end %}
       pthread_stack_bounds(thread)
     end
 
     def self.stack_bounds_snapshot_misses : UInt64
-      0_u64
+      {% if flag?(:darwin) %}
+        stop_bounds_misses
+      {% else %}
+        0_u64
+      {% end %}
     end
 
-    # There is no table to run out of, for the same reason there is nothing to
-    # snapshot. Zero rather than a missing method: a caller that gates on this
-    # must not have to ask which platform it is on.
+    # The stop table grows with the thread list and cannot run out. Zero
+    # rather than a missing method: a caller that gates on this must not have
+    # to ask which platform it is on.
     def self.stack_bounds_capacity_misses : UInt64
       0_u64
     end
@@ -73,9 +81,9 @@ module Gcry
       value
     end
 
-    # Darwin queries the descriptor directly at lookup time rather than
-    # snapshotting (see the note above), so there is no visit/read pair to
-    # count and nothing is ever in flight during the snapshot. Zeros rather
+    # The stop resolves every thread's bounds in its own walk, in
+    # `darwin_stw.cr`, not through Linux's visit/read snapshot, so there is no
+    # visit/read pair to count and nothing is ever in flight. Zeros rather
     # than a missing method: a caller that gates on these must not have to ask
     # which platform it is on.
     def self.stack_bounds_visited : UInt64
