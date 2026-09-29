@@ -719,6 +719,15 @@ kept finding the rest.
       spec that turns it on fires the documented off-by-one race from an
       arbitrary allocation site and kills the process. `GCRY_DEBUG_INVARIANTS=1`
       and the `make invariants` gate are where that check belongs.
+- [x] **A thread leaving the fiber list during a stop cut the collector's walk
+      short — fixed 2026-09-29.** Found by looking, at the end of a stop, at
+      the task the census could not account for at its start: it had exited.
+      `Thread#start` leaves the thread list, then the fiber list; between the
+      two the thread is not suspended, and `Thread::LinkedList#delete` sets
+      the node's `next` to nil under a walk standing on it, so every fiber
+      after it went unscanned. `make fiber-list-exit-race`: 425–681 of 2 560
+      stack-held objects lost a run unlocked, 0 with the fiber list held
+      across the stop. `bench/log/linux/2026-09-29-fiber-list-exit/FINDINGS.md`
 - [ ] **A thread gcry has not heard of yet is neither stopped nor scanned.**
       Reached from the fifth aarch64 crash, which showed a `Thread`'s
       `@system_handle` read out of a **freed, poisoned block**. Two facts are

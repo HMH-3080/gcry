@@ -1814,6 +1814,18 @@ index-grow-race: $(BIN)
 	$(CRYSTAL) build -Dgc_none bench/index_grow_race.cr -o $(BIN)/index_grow_race --error-trace
 	$(BIN)/index_grow_race
 
+# A thread leaves Crystal's thread list before its fiber list, so between the
+# two it is not suspended, and its `Fiber.inactive` used to cut the
+# collector's fiber walk short: every fiber after it went unscanned. Short-
+# lived threads beside parked holder fibers, the dying thread's gap and the
+# walk both widened. Shipped (fiber list held across the stop) must lose no
+# holder's object in any run; `GCRY_FIBER_LIST_UNLOCKED=1` must lose one in at
+# least one of five (measured: all five, 425-681 of 2 560 each). ~30 s.
+.PHONY: fiber-list-exit-race
+fiber-list-exit-race: $(BIN)
+	$(CRYSTAL) build -Dgc_none bench/fiber_list_exit_race.cr -o $(BIN)/fiber_list_exit_race --error-trace
+	$(BIN)/fiber_list_exit_race
+
 # What the parked-fiber lag reads, for the largest open pause item: 8.4 ms of a
 # 9.2 ms p50 EC4 pause is `roots_fibers_ns`, because under multi-mutator STW
 # every parked fiber is scanned from 256 KiB below its saved `stack_top`. The

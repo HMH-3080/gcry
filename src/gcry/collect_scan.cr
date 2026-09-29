@@ -1364,6 +1364,7 @@ module Gcry
       stw_multi = @world_stopped && multi_mutator_threads?
       warn_stw_lag_zero_once if stw_multi && @stw_multi_stack_lag == 0
       Fiber.unsafe_each do |fiber|
+        fiber_walk_test_delay if @fiber_walk_test_delay_us > 0
         mark_root_candidate(Pointer(Void).new(fiber.object_id), source: RootSource::Stack)
         next if fiber == current
         next if @idle_scan_skip && IdleRelease.fiber?(fiber)
@@ -1446,6 +1447,19 @@ module Gcry
       {% else %}
         false
       {% end %}
+    end
+
+    # Research only — `GCRY_FIBER_WALK_TEST_DELAY_US=N`: spin N µs at every
+    # fiber of the root walk, while the walk is standing on that node, so a
+    # list change made during the stop lands inside the walk
+    # (`make fiber-list-exit-race`).
+    property fiber_walk_test_delay_us : UInt64 = 0_u64
+
+    private def fiber_walk_test_delay : Nil
+      deadline = Gcry::Clock.monotonic_ns &+ @fiber_walk_test_delay_us &* 1000_u64
+      while Gcry::Clock.monotonic_ns < deadline
+        Intrinsics.pause
+      end
     end
 
     private def scan_exclusive_parked_fiber_leaf(top : UInt64, bottom : UInt64) : Nil

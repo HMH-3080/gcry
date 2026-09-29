@@ -1345,6 +1345,10 @@ module GC
     if st = env_u64("GCRY_PAGE_RELEASE_TEST_STALL_MS")
       heap.page_release_test_stall_ms = st
     end
+    heap.fiber_list_unlocked = true if env_flag_one?("GCRY_FIBER_LIST_UNLOCKED")
+    if d = env_u64("GCRY_FIBER_WALK_TEST_DELAY_US")
+      heap.fiber_walk_test_delay_us = d.clamp(0_u64, 100_000_u64)
+    end
     if st = env_u64("GCRY_STW_TEST_STALL_MS")
       heap.stw_test_stall_ms = st if st <= 60_000
     end

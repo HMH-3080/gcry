@@ -97,9 +97,11 @@ module Gcry
       @stw_owner = current_thread
       @stw_owner_pthread = Gcry::Platform.current_thread_id
       {% if (flag?(:darwin) || flag?(:win32)) %}
+        lock_fiber_list_for_stop
         begin
           {% if flag?(:win32) %}
             unless Platform.try_stop_world_threads(current_thread)
+              unlock_fiber_list_after_stop
               @stw_owner = nil
               @stw_owner_pthread = 0_u64
               MonitorGate.open
@@ -111,6 +113,7 @@ module Gcry
             Platform.stop_world_threads(current_thread)
           {% end %}
         rescue ex
+          unlock_fiber_list_after_stop
           @stw_owner = nil
           @stw_owner_pthread = 0_u64
           MonitorGate.open
@@ -155,6 +158,7 @@ module Gcry
         # See src/gcry/thread_list_tripwire.cr.
         check_thread_list_before_lock
 
+        lock_fiber_list_for_stop
         Thread.lock
         StwWatchdog.note_suspend_step(StwWatchdog::STEP_THREAD_LOCK)
         begin
@@ -367,9 +371,49 @@ module Gcry
           @stw_owner = nil
           @stw_owner_pthread = 0_u64
           Thread.unlock
+          unlock_fiber_list_after_stop
           raise ex
         end
       {% end %}
+    end
+
+    # The fiber list's mutex, held from before the first thread is stopped
+    # until after the last is resumed.
+    #
+    # The stop suspends the threads on Crystal's thread list, and a thread
+    # leaves that list before it leaves the fiber list: `Thread#start` ends
+    # with `Thread.threads.delete(self)` and then `Fiber.inactive(fiber)`. A
+    # thread between the two is not stopped. Its `Fiber.inactive` could run
+    # while the collector walked the fiber list with `Fiber.unsafe_each`, and
+    # `Thread::LinkedList#delete` sets the removed node's `next` to nil: a
+    # walk standing on that node stopped there, and every fiber after it went
+    # unscanned for the collection. `make fiber-list-exit-race` lost 470–600
+    # of 2 560 stack-held objects a run that way, and none with any of the
+    # three conditions removed (`bench/log/linux/2026-09-29-fiber-list-exit/`).
+    # Held, the dying thread's `Fiber.inactive` waits for the resume.
+    #
+    # Taken before any thread is suspended, so no suspended thread can be
+    # holding it: its critical sections are `push` and `delete`, which take
+    # no other lock, so a holder always lets go. Taken before `Thread.lock`
+    # and released after it, and nothing in Crystal holds the thread list's
+    # mutex while it takes this one. The collector itself touches the fiber
+    # list only through `unsafe_each` while the world is stopped. The mutex
+    # is `ERRORCHECK`, so a relock by the same thread raises instead of
+    # hanging, and the unlock has to be the collector's, which it is.
+    #
+    # `GCRY_FIBER_LIST_UNLOCKED=1` restores the unlocked walk for the gate.
+    property fiber_list_unlocked : Bool = false
+    @fiber_list_locked = false
+
+    private def lock_fiber_list_for_stop : Nil
+      return if @fiber_list_unlocked
+      @fiber_list_locked = Fiber.gcry_lock_list
+    end
+
+    private def unlock_fiber_list_after_stop : Nil
+      return unless @fiber_list_locked
+      @fiber_list_locked = false
+      Fiber.gcry_unlock_list
     end
 
     # Roughly a second of `pause` on either arch. The watchdog reports the stall
@@ -757,6 +801,7 @@ module Gcry
       {% if (flag?(:darwin) || flag?(:win32)) %}
         {% if flag?(:win32) %} @world_stopped = false {% end %}
         Platform.start_world_threads(current_thread)
+        unlock_fiber_list_after_stop
         Platform.clear_thread_sps
         @world_stopped = false
         @stw_owner = nil
@@ -849,6 +894,7 @@ module Gcry
           StwWatchdog.leave
         ensure
           Thread.unlock
+          unlock_fiber_list_after_stop
         end
       {% end %}
     end
@@ -892,5 +938,21 @@ module Gcry
       rescue
       end
     end
+  end
+end
+
+class Fiber
+  # gcry: the fiber list's own mutex, for `Heap#lock_fiber_list_for_stop`.
+  # False before `Fiber.init` has made the list: the class variable is
+  # `uninitialized` until then and reads as a null reference.
+  def self.gcry_lock_list : Bool
+    list = @@fibers
+    return false if list.object_id == 0
+    list.@mutex.lock
+    true
+  end
+
+  def self.gcry_unlock_list : Nil
+    @@fibers.@mutex.unlock
   end
 end

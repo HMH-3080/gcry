@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **A thread exiting during a collection could hide other fibers' stacks from
+  it.** A thread leaves Crystal's thread list before its fiber list, and
+  between the two it is not stopped. Its removal from the fiber list could
+  land while the collector was walking that list, and the removal sets the
+  node's `next` to nil. The walk then ended early, and every fiber after
+  that node went unscanned for the collection, so objects only their stacks
+  held were swept. A harness that widens both windows lost 425–681 of 2 560
+  such objects per run. The collector now holds the fiber list's mutex for
+  the whole stop, so an exiting thread's removal waits for the resume, and
+  the harness loses none. `make fiber-list-exit-race`;
+  `GCRY_FIBER_LIST_UNLOCKED=1` restores the old walk
+  (`bench/log/linux/2026-09-29-fiber-list-exit/`).
+
 ## [0.31.0] - 2026-09-29
 
 ### Changed
