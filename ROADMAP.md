@@ -3718,6 +3718,18 @@ draw of `bench/log/macos/2026-08-10-053800/` — which is what makes it schedula
       `GCRY_TLS_ROOTS=0` still kills it. So something besides the TLS range
       keeps it alive there, and the harness may be proving less than it
       claims.
+- [ ] **macOS: `tlab-nursery-sample` hung twice (2026-09-29).** The job was
+      cancelled at its 20-minute limit on `8bc11c8` and on `d1549e2`, both
+      after the fiber list began to be held across the stop, and both in that
+      step, which normally takes 100–120 s. The one log that survived is
+      `tlab-only` seed 10: it printed nothing after collection 2, and the
+      watchdog printed nothing either. Rate: about 2 in 280 runs. A probe
+      branch then ran 180 runs on the same runner with no hang, which chance
+      allows (p ≈ 0.3). Each run is now bounded, and a stall is captured with
+      `sample` (`bench/run_bounded.sh` / `stall_capture.sh` work on macOS),
+      so the next one fails the step with every thread's stack instead of
+      eating the job. Headered TLAB is unsupported; the default layout was
+      never seen doing this.
 - [ ] **A large chunk released with its block still allocated (`dormant_flush`,
       2026-09-28).** Two consecutive faults in the first minutes of a
       campaign on `2a46123`. A worker wrote into its own buffer after the
