@@ -2140,6 +2140,10 @@ jobs:
           make auto-layouts
           make scrub-fibers
           make ec-queue-audit
+          # Darwin stops only the threads on Crystal's list too, so a thread
+          # between leaving it and leaving the fiber list is not stopped here
+          # either. The unlocked arm must go red on this platform as well.
+          make fiber-list-exit-race
           make perf-baseline
           make occupied-release
 
