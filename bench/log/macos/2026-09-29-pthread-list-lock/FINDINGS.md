@@ -81,10 +81,19 @@ Counters: `Platform.stop_rounds_retried`, `stop_rounds_exhausted`, and
 
 And `test (darwin native)` on master `8bc3b35`: green.
 
-## Open
+## The one poisoned-pointer SIGSEGV
 
-The same probe ran `fiber_list_exit_race --child` directly 3 times, and 1
-died of a poisoned-pointer SIGSEGV (`GCRY_POISON_FREED`). Its three shipped
-runs inside `make fiber-list-exit-race` were clean. A paired pre/post run of
-that child is in `probe-mac-flr` to say whether the stop table changed its
-rate.
+The `8bc3b35` probe also ran `fiber_list_exit_race --child` directly 3 times,
+and 1 died of a poisoned-pointer SIGSEGV (`GCRY_POISON_FREED`). Its three
+shipped runs inside `make fiber-list-exit-race` were clean. `e69e36f` added
+step 3. Paired against `3432a9b`, from before any of this, 15 children each,
+interleaved (probe run 36622253889):
+
+| build | runs | lost a holder or died |
+|---|---:|---:|
+| `3432a9b` | 15 | 0 |
+| `e69e36f` | 15 | 0 |
+
+Not seen again. [INFERENCE] Step 3 closed it: under step 2 alone, a thread
+born after the last recheck had no bounds at all. Master CI on `e69e36f`:
+all jobs green.
