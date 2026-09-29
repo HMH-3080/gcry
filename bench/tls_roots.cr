@@ -106,13 +106,19 @@ def wipe_stack : Nil
 end
 
 control = ARGV.includes?("--control")
+# Collect from a spawned thread, past the 64-major static-root refresh. The
+# refresh rebuilt the main thread's TLS range from the collecting thread's own
+# thread-local, so on Windows and macOS a refresh on another thread swapped
+# the main thread's block out of the root set (2026-09-29). Linux resolves the
+# ranges once and never had it.
+elsewhere = ARGV.includes?("--collect-elsewhere")
 heap = Gcry.default_heap.not_nil!
 
 bounds = Gcry::Platform.current_pthread_stack_bounds
 tls = TlsHolder.addr
 
 puts "=== is thread-local storage a root? ==="
-puts "mode: #{control ? "control (held nowhere; the block must die)" : "held only in a @[ThreadLocal]"}"
+puts "mode: #{control ? "control (held nowhere; the block must die)" : "held only in a @[ThreadLocal]"}#{elsewhere ? ", collected on a spawned thread past the static-root refresh" : ""}"
 if bounds
   lo = bounds[0].address
   hi = bounds[1].address
@@ -139,8 +145,14 @@ puts ""
 hidden = make_victim(!control)
 wipe_stack
 # Two, so a single collection's timing cannot be the explanation.
-GC.collect
-GC.collect
+if elsewhere
+  collections = Gcry::Heap::STATIC_ROOT_REFRESH_INTERVAL.to_i + 6
+  Thread.new(name: "collector") { collections.times { GC.collect } }.join
+  puts "collected #{collections} times on a spawned thread"
+else
+  GC.collect
+  GC.collect
+end
 
 victim = Pointer(Void).new(hidden ^ KEY)
 alive = heap.live?(victim)

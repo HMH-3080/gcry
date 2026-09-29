@@ -104,6 +104,7 @@ try {
             }
             Remove-Item Env:GCRY_TLS_ROOTS
             Invoke-Checked $tls @('--control')
+            Invoke-Checked $tls @('--collect-elsewhere')
 
             # The holders search compiled on this platform for the first time
             # in v0.26.1, and the only path that reaches it here is the arm

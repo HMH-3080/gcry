@@ -214,6 +214,7 @@ module Gcry
       @@tls_roots = true
       @@tls_lo = 0_u64
       @@tls_hi = 0_u64
+      @@tls_taken = false
       # Sum of `__thread_data` + `__thread_bss` in the executable — the TLV
       # *payload*, not `__thread_vars` (descriptors). The live block dyld
       # allocates is this size; the template itself is skipped as a root.
@@ -283,8 +284,6 @@ module Gcry
         @@range_count = 0
         @@tls_memsz = 0_u64
         @@tls_align = 0_u64
-        @@tls_lo = 0_u64
-        @@tls_hi = 0_u64
         @@exe_bias = 0_u64
         @@text_lo = 0_u64
         @@text_hi = 0_u64
@@ -459,7 +458,7 @@ module Gcry
       end
 
       def self.tls_root_range : {UInt64, UInt64}
-        {@@tls_lo, @@tls_hi}
+        @@tls_roots ? {@@tls_lo, @@tls_hi} : {0_u64, 0_u64}
       end
 
       # The main thread's thread-local storage is a root, and on Darwin it was
@@ -485,36 +484,48 @@ module Gcry
       #
       # Taking `pointerof(@@tls_anchor)` materialises the block: Darwin TLV
       # is lazy. That allocation is libc `malloc`, not `GC.malloc`, so it is
-      # not a gcry heap object. `GC.init` is the only context that can take
-      # the address of its own thread-local, and the same context this cache
-      # is already built in.
+      # not a gcry heap object.
+      #
+      # Taken **once**, in `GC.init` on the main thread, and pushed again from
+      # the memo on every refresh. The refresh runs every 64 majors on
+      # whichever thread collects, and the anchor's address on a spawned
+      # thread is that thread's block: recomputed there, the main thread's
+      # thread-locals left the root set. Seen on Windows, which had the same
+      # code (`static roots collapsed` at collection 320, 2026-09-29).
       private def self.take_main_thread_tls : Nil
         return unless @@tls_roots
-        @@tls_lo = 0_u64
-        @@tls_hi = 0_u64
         return if @@tls_memsz == 0
+        unless @@tls_taken
+          @@tls_taken = true
+          @@tls_lo, @@tls_hi = main_thread_tls_window
+        end
+        push_range(@@tls_lo, @@tls_hi) if @@tls_hi > @@tls_lo
+      end
+
+      # The calling thread's block — call it on the main thread only.
+      # `{0, 0}` when there is none to add.
+      private def self.main_thread_tls_window : {UInt64, UInt64}
+        none = {0_u64, 0_u64}
         anchor = pointerof(@@tls_anchor).address
-        return if anchor == 0
+        return none if anchor == 0
         span = @@tls_memsz
         align = @@tls_align
         span = (span &+ align &- 1) & ~(align &- 1) if align > 1
         lo = anchor > span ? (anchor &- span) & ~7_u64 : 0_u64
         hi = (anchor &+ span &+ 7) & ~7_u64
         region = writable_region_containing(anchor)
-        return unless region
+        return none unless region
         rlo, rhi = region
         lo = rlo if lo < rlo
         hi = rhi if hi > rhi
-        return if hi <= lo
+        return none if hi <= lo
         i = 0
         while i < @@range_count
           r = @@ranges[i]
-          return if r.low <= anchor && anchor < r.high
+          return none if r.low <= anchor && anchor < r.high
           i += 1
         end
-        push_range(lo, hi)
-        @@tls_lo = lo
-        @@tls_hi = hi
+        {lo, hi}
       end
 
       # The region containing *addr*, if it is mapped writable. `nil` if the

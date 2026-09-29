@@ -51,6 +51,7 @@ module Gcry::Platform
   @@tls_roots = true
   @@tls_lo = 0_u64
   @@tls_hi = 0_u64
+  @@tls_taken = false
   @@tls_memsz = 0_u64
   @@tls_tmpl_lo = 0_u64
   @@tls_tmpl_hi = 0_u64
@@ -99,8 +100,6 @@ module Gcry::Platform
     @@tls_memsz = 0_u64
     @@tls_tmpl_lo = 0_u64
     @@tls_tmpl_hi = 0_u64
-    @@tls_lo = 0_u64
-    @@tls_hi = 0_u64
     @@resolves &+= 1
     scan_pe_static_roots do |low, high|
       push_range(low.address, high.address)
@@ -205,7 +204,7 @@ module Gcry::Platform
   end
 
   def self.tls_root_range : {UInt64, UInt64}
-    {@@tls_lo, @@tls_hi}
+    @@tls_roots ? {@@tls_lo, @@tls_hi} : {0_u64, 0_u64}
   end
 
   # The main thread's thread-local storage is a root.
@@ -218,33 +217,49 @@ module Gcry::Platform
   # walk never sees. Either way the live block is the one that contains
   # `@@tls_anchor`, sized from the TLS directory, clipped with `VirtualQuery`.
   #
+  # Taken **once**, on the thread that runs `GC.init` — the main thread —
+  # and pushed again from the memo on every refresh. The refresh runs every
+  # 64 majors on whichever thread collects, and `pointerof(@@tls_anchor)` on
+  # a spawned thread is *that* thread's block. Recomputed there, the main
+  # thread's thread-locals left the root set: `make thread-birth-fiber` on
+  # Windows arm64, `static roots collapsed to 16096 bytes from 44944` at
+  # collection 320 and a C0000005 after it (2026-09-29).
+  #
   # Same contract as Linux (`PT_TLS` + `/proc/self/maps`) and Darwin
   # (`__thread_data`/`__thread_bss` + `mach_vm_region`). `make tls-roots`.
   private def self.take_main_thread_tls : Nil
     return unless @@tls_roots
-    @@tls_lo = 0_u64
-    @@tls_hi = 0_u64
     return if @@tls_memsz == 0
+    unless @@tls_taken
+      @@tls_taken = true
+      @@tls_lo, @@tls_hi = main_thread_tls_window
+    end
+    push_range(@@tls_lo, @@tls_hi) if @@tls_hi > @@tls_lo
+  end
+
+  # The calling thread's block — call it on the main thread only. `{0, 0}`
+  # when there is none to add, including when a writable PE section already
+  # covers the anchor.
+  private def self.main_thread_tls_window : {UInt64, UInt64}
+    none = {0_u64, 0_u64}
     anchor = pointerof(@@tls_anchor).address
-    return if anchor == 0
+    return none if anchor == 0
     span = @@tls_memsz
     lo = anchor > span ? (anchor &- span) & ~7_u64 : 0_u64
     hi = (anchor &+ span &+ 7) & ~7_u64
     region = writable_region_containing(anchor)
-    return unless region
+    return none unless region
     rlo, rhi = region
     lo = rlo if lo < rlo
     hi = rhi if hi > rhi
-    return if hi <= lo
+    return none if hi <= lo
     i = 0
     while i < @@range_count
       r = @@ranges[i]
-      return if r.low <= anchor && anchor < r.high
+      return none if r.low <= anchor && anchor < r.high
       i += 1
     end
-    push_range(lo, hi)
-    @@tls_lo = lo
-    @@tls_hi = hi
+    {lo, hi}
   end
 
   private def self.writable_region_containing(addr : UInt64) : {UInt64, UInt64}?

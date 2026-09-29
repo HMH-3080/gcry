@@ -1335,12 +1335,16 @@ thread-census-symbolize: $(BIN)
 # must keep the block, the red arm (`GCRY_TLS_ROOTS=0`) must lose it, and a
 # control that holds the pointer nowhere must lose it either way - without
 # that last one a conservative hit on a stale stack slot would pass the
-# first two. Darwin CI and the Windows default variant run this too.
+# first two. `--collect-elsewhere` collects on a spawned thread past the
+# 64-major static-root refresh, which rebuilt the main thread's range from the
+# collecting thread's block on Windows and macOS. Darwin CI and the Windows
+# default variant run this too.
 tls-roots: $(BIN)
 	$(CRYSTAL) build -Dgc_none bench/tls_roots.cr -o $(BIN)/tls_roots --error-trace
 	$(BIN)/tls_roots
 	! GCRY_TLS_ROOTS=0 $(BIN)/tls_roots
 	$(BIN)/tls_roots --control
+	$(BIN)/tls_roots --collect-elsewhere
 
 # Do the executable's `.data` and BSS stay root ranges after the binary is
 # replaced on disk? A redeploy renames every maps line of the running image to
