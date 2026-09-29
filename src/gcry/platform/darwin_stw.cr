@@ -379,9 +379,11 @@ module Gcry
         @@stop_capacity = cap
       end
 
-      # The bounds resolved for *id* at the start of the stop in progress, or
-      # nil for a thread that joined the list since — a lookup now could block
-      # on a suspended thread's lock. Counted, as Linux counts its misses.
+      # The bounds resolved for *id* at the start of the stop in progress. A
+      # thread that joined the list since is not in the table, and asking
+      # libpthread now could block on a suspended thread's lock, so it gets
+      # the stack its main fiber recorded — a Crystal object, no lock — or
+      # nil before it has one. Misses are counted, as Linux counts its own.
       def self.stop_stack_bounds(id : LibC::PthreadT) : {Void*, Void*}?
         return nil unless @@stop_active
         key = id.address.to_u64
@@ -395,6 +397,13 @@ module Gcry
           i += 1
         end
         @@stop_bounds_misses &+= 1
+        ::Thread.unsafe_each do |thread|
+          next unless thread.to_unsafe.address.to_u64 == key
+          if fiber = thread.@main_fiber
+            stack = fiber.@stack
+            return {stack.pointer.as(Void*), stack.bottom.as(Void*)}
+          end
+        end
         nil
       end
 
