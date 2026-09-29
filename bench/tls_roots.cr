@@ -77,7 +77,14 @@ end
 # returns.
 @[NoInline]
 def make_victim(hold : Bool) : UInt64
-  ptr = GC.malloc(VICTIM_SIZE).as(UInt8*)
+  # Atomic, so the static-root type-id gate passes it. The TLS range is
+  # scanned as a static root, and the gate rejects a non-atomic block whose
+  # first `Int32` is not a type id — as `FILL` is not. With `GC.malloc` the
+  # arm was measuring the gate plus whatever stale stack word happened to
+  # survive `wipe_stack`: one static reject per run, the block kept by an
+  # extra stack root, and on Windows 6 failures in 100 runs when none was left
+  # (2026-09-29). Atomic, it measures the one question it asks.
+  ptr = GC.malloc_atomic(VICTIM_SIZE).as(UInt8*)
   VICTIM_SIZE.times { |i| ptr[i] = FILL }
   TlsHolder.hold(ptr.as(Void*)) if hold
   ptr.address ^ KEY
