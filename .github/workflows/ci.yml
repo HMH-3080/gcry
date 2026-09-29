@@ -2142,8 +2142,10 @@ jobs:
           make ec-queue-audit
           # Darwin stops only the threads on Crystal's list too, so a thread
           # between leaving it and leaving the fiber list is not stopped here
-          # either. The unlocked arm must go red on this platform as well.
-          make fiber-list-exit-race
+          # either. The unlocked arm must go red on this platform as well; its
+          # children often hang rather than lose objects, which also counts,
+          # so their wait is capped to keep this job inside its budget.
+          FIBER_LIST_RED_TIMEOUT_S=40 make fiber-list-exit-race
           make perf-baseline
           make occupied-release
 

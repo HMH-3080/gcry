@@ -141,9 +141,14 @@ RUNS.times do
 end
 failures << "shipped: #{RUNS - clean} of #{RUNS} runs lost a holder's object or died" if clean < RUNS
 
+# The unlocked arm can wedge rather than lose objects: a walk cut short can
+# sweep a fiber's own state, and on macOS 3 of 5 red children hung. A hang
+# counts as red either way, so the wait for one is bounded separately
+# (`FIBER_LIST_RED_TIMEOUT_S`) to keep the gate inside a CI job's budget.
+red_timeout = (ENV["FIBER_LIST_RED_TIMEOUT_S"]? || "300").to_i.seconds
 red = 0
 RED_RUNS.times do
-  r = BoundedChild.run(exe, ["--child"], base.merge({"GCRY_FIBER_LIST_UNLOCKED" => "1"}), 300.seconds)
+  r = BoundedChild.run(exe, ["--child"], base.merge({"GCRY_FIBER_LIST_UNLOCKED" => "1"}), red_timeout)
   puts "  red: #{r.timed_out ? "timed out" : (r.output.lines.last? || "died with no output")}"
   red += 1 unless r.ok && r.output.includes?("lost=0")
 end
