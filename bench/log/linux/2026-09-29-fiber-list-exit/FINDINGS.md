@@ -117,3 +117,47 @@ stacks of fibers created after a thread that was exiting. How often a real
 host preempts a thread between the two removals, while a walk passes its
 node, has not been measured. The window is short, but it was open on every
 collection that overlapped a thread exit.
+
+## And a stop that could wait forever for a wiped acknowledgement
+
+The first CI run with the fiber list held failed `make stw-epoch` on aarch64:
+the `double+epoch` arm hung. That arm sends every thread a redundant
+`SIG_SUSPEND` after each resume. The epoch should decline it, and it had
+passed on all 32 runs before. Locally, with a stress campaign on the host,
+the arm's child hung in **5 of 120** runs.
+
+gdb inside the hang showed that the thread the collector was waiting for
+**had** suspended. It sat in `sigsuspend` with a `SIGPWR` pending.
+
+1. A suspend signal from the previous stop was delivered late. It had met
+   the thread inside its handler and waited in the mask, and the scheduler
+   then kept the thread off a CPU.
+2. By the time it arrived, the next stop had already published its epoch.
+   The handler admitted it as this stop's: it acknowledged, recorded the
+   epoch as served, and suspended.
+3. The collector then reached that thread in its send loop. That loop
+   reserved each slot, which **clears its acknowledgement**, and then sent
+   the signal, one thread at a time and after the epoch was out.
+4. The collector's own signal waited in the handler's mask, to be declined
+   later as redundant. The collector waited for an acknowledgement that
+   nothing would give again.
+
+The fix reserves every slot and clears every flag in a loop **before**
+`begin_stop_epoch`, then signals. A delivery that lands before the epoch is
+declined as stale. One that lands after it gives an acknowledgement the
+collector no longer wipes. The first send uses a raw `pthread_kill`, not
+`Thread#suspend`, because `Thread#suspend` clears the flag again just before
+it signals.
+
+| child runs, `double+epoch`, loaded host | hung |
+|---|---:|
+| old order, fiber list held (`e86aad2`) | 7 / 120 and 5 / 120 |
+| old order, `GCRY_FIBER_LIST_UNLOCKED=1` | 0 / 120 |
+| new order, fiber list held | **0 / 240** |
+
+The race was in the epoch design, not in the fiber list lock. A real resend
+can be delivered late the same way. Holding the fiber list made it far more
+likely: threads that are starting up block on that mutex during a stop, get
+suspended inside the wait, and receive the redundant signal while still in
+their handler. `make stw-epoch` passes every arm after the change, with both
+controls still red.

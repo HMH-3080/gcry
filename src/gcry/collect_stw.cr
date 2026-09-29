@@ -213,6 +213,34 @@ module Gcry
           # Off by default: it reads /proc inside the pause.
           StwWatchdog.note_suspend_step(StwWatchdog::STEP_BOUNDS_DONE)
           census_threads(listed) if @thread_census
+          # Reserve every thread's acknowledgement slot **before** the epoch is
+          # published, and before any signal goes out. Two reasons, both
+          # load-bearing: the handler must not have to claim one (claiming is
+          # a CAS loop, and the handler is the one place that cannot afford to
+          # contend), and the wait below spins on a slot index rather than
+          # scanning the table. `reserve_suspend_slot` also clears the slot's
+          # stale SP and acknowledgement, and the flag is cleared beside it.
+          #
+          # Before the epoch, and that is not a detail. A suspend signal from
+          # an earlier stop — a resend, or one that met the thread inside its
+          # handler and waited there — can be delivered late, on a thread the
+          # scheduler kept off a CPU. Delivered once the new epoch is out, it
+          # is admitted as this stop's: the thread acknowledges, records the
+          # epoch as served and suspends. When the reservation ran after the
+          # epoch, one thread at a time, it could then clear that
+          # acknowledgement. This stop's own signal waited in the handler's
+          # mask, to be declined later as redundant, and the collector waited
+          # for an acknowledgement nothing would give again. `make stw-epoch`'s
+          # `double+epoch` arm hung that way in 5 of 120 runs on a loaded host
+          # (`bench/log/linux/2026-09-29-fiber-list-exit/`). Cleared before
+          # the epoch, a late delivery is declined as stale; after it, the
+          # acknowledgement it gives is kept.
+          Thread.unsafe_each do |thread|
+            next if thread == current_thread
+            next if stw_signal_exempt?(thread)
+            Platform.reserve_suspend_slot(thread.to_unsafe)
+            thread.@suspended.set(false)
+          end
           # The stop id every suspend signal below is tagged with, set before
           # the first `pthread_kill`: a delivery that arrives while the epoch
           # is 0 is declined by its own handler, so sending first and stamping
@@ -238,15 +266,6 @@ module Gcry
           Thread.unsafe_each do |thread|
             next if thread == current_thread
             next if stw_signal_exempt?(thread)
-            # Reserve this thread's acknowledgement slot **before** its signal
-            # goes out. Two reasons, both load-bearing: the handler must not
-            # have to claim one (claiming is a CAS loop, and the handler is
-            # the one place that cannot afford to contend), and the wait below
-            # spins on a slot index rather than scanning the table.
-            # `reserve_suspend_slot` also clears the slot's stale SP and
-            # acknowledgement, which is what `Thread#suspend` used to do for
-            # the flag it no longer writes.
-            Platform.reserve_suspend_slot(thread.to_unsafe)
             if mute_budget > 0 || drop_budget > 0
               if mute_budget > 0
                 mute_budget -= 1
@@ -255,13 +274,13 @@ module Gcry
                 drop_budget -= 1
                 @stw_suspend_dropped_for_test &+= 1
               end
-              # Both arms are the absence of `thread.suspend`, which is what
-              # normally clears the flag side of the acknowledgement. The slot
-              # side was cleared by the reservation above.
-              thread.@suspended.set(false)
+              # Both arms are the absence of the signal. Slot and flag were
+              # cleared by the reservation above.
               next
             end
-            thread.suspend
+            # Not `Thread#suspend`: it clears the flag before it signals, which
+            # is the clear-after-the-epoch the reservation loop exists to avoid.
+            LibStwProbe.pthread_kill(thread.to_unsafe, Platform::STW_SIG_SUSPEND)
           end
           # The breadcrumbs the first legible sighting of the aarch64 hang asked
           # for. It said `STALLED … in phase=suspend` and could go no further:

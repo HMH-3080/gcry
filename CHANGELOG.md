@@ -21,6 +21,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the harness loses none. `make fiber-list-exit-race`;
   `GCRY_FIBER_LIST_UNLOCKED=1` restores the old walk
   (`bench/log/linux/2026-09-29-fiber-list-exit/`).
+- **Linux: a late suspend signal could leave a stop waiting forever.** A
+  signal from an earlier stop, delivered once the next stop had published
+  its epoch, was admitted as the new stop's: the thread acknowledged and
+  suspended. The collector then reserved that thread's slot, which clears the
+  acknowledgement, and waited for one that would never come again. Slots are
+  now reserved before the epoch is published. `make stw-epoch`'s
+  `double+epoch` arm hung in 5–7 of 120 runs on a loaded host before, and in
+  0 of 240 after (same findings).
 
 ## [0.31.0] - 2026-09-29
 
