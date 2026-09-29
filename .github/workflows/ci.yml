@@ -911,6 +911,13 @@ jobs:
         run: |
           make thread-tls-roots
 
+      # A starting thread is listed before its main fiber exists, and the
+      # fiber is on its stack alone until the fiber-list push. Windows lost it
+      # (no bounds without the fiber); here the OS bounds cover it — keep it so.
+      - name: A thread's main fiber survives its birth
+        run: |
+          make thread-birth-fiber
+
       # And the question the holder search opened: is the mark complete at all?
       # Walks every marked block after mark and before sweep and names any
       # pointer into a block the sweep is about to free. The gate plants one it
@@ -2159,6 +2166,7 @@ jobs:
           # so their wait is capped to keep this job inside its budget.
           FIBER_LIST_RED_TIMEOUT_S=40 make fiber-list-exit-race
           make static-raw-buffer-roots
+          make thread-birth-fiber
           make perf-baseline
           make occupied-release
 

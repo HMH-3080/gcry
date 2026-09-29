@@ -21,6 +21,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `GCRY_DISABLE_TYPE_ID_GATE` is gone. `make static-raw-buffer-roots`
   (`bench/log/linux/2026-09-29-static-type-id-gate/`).
 
+- **Windows: a thread's main fiber could be swept while the thread started.**
+  A starting thread is on Crystal's thread list before its main fiber exists,
+  and on Windows gcry took a thread's stack bounds from that fiber. A thread
+  stopped between allocating the fiber and pushing it onto the fiber list
+  therefore had its stack left unscanned. The fiber, held only there, was
+  freed and then published, and the next fiber walk faulted on it:
+  `Fiber#running?` at C0000005 in `make tls-roots` in 3 runs of 100. Such a
+  thread is now bounded by the stack reservation its suspend SP lies in. The
+  new `make thread-birth-fiber` lost 9 fibers in 3 000 births before the fix
+  and 0 after; it runs on Windows, Linux and macOS CI
+  (`bench/log/linux/2026-09-29-windows-unborn-thread-stack/`).
+
 ### Changed
 
 - **The page blacklist is off by default.** Its only input was the static

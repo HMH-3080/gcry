@@ -1840,6 +1840,17 @@ thread-tls-roots: $(BIN)
 	$(BIN)/thread_tls_roots
 	$(BIN)/thread_tls_roots --control
 
+# A thread is on Crystal's thread list before its main fiber exists, and that
+# fiber is on the thread's stack alone until it is pushed onto the fiber list.
+# Windows bounded a thread's stack by the fiber, so a thread stopped in between
+# was not scanned and its fiber was swept (tls-roots C0000005, 3 of 100).
+# Threads are started one at a time against back-to-back collections; each
+# must find its main fiber allocated and holding its own stack. ~6 s.
+.PHONY: thread-birth-fiber
+thread-birth-fiber: $(BIN)
+	$(CRYSTAL) build -Dgc_none bench/thread_birth_fiber.cr -o $(BIN)/thread_birth_fiber --error-trace
+	$(BIN)/thread_birth_fiber
+
 .PHONY: static-raw-buffer-roots
 static-raw-buffer-roots: $(BIN)
 	$(CRYSTAL) build -Dgc_none bench/static_raw_buffer_roots.cr -o $(BIN)/static_raw_buffer_roots --error-trace

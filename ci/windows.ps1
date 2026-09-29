@@ -126,6 +126,17 @@ try {
             $coverage = Join-Path $PWD 'bin/stw_capture_coverage_windows.exe'
             Invoke-Checked $crystal (@('build', '-Dgc_none', 'bench/stw_capture_coverage.cr', '-o', $coverage, '--error-trace'))
             Invoke-Checked $coverage @()
+
+            # A starting thread is on the thread list before its main fiber
+            # exists, and this platform bounded a thread's stack by that fiber:
+            # stopped in between, the thread was not scanned and the new fiber
+            # was swept, then published — `Fiber#running?` at C0000005 in the
+            # tls-roots step above, 3 runs in 100. Pre-fix, 300 births lost a
+            # fiber in 6 runs of 10 (9 in 3 000); 3 000 births, ~8 s here.
+            Write-Host "Windows thread birth keeps its main fiber"
+            $birth = Join-Path $PWD 'bin/thread_birth_fiber_windows.exe'
+            Invoke-Checked $crystal (@('build', '-Dgc_none', 'bench/thread_birth_fiber.cr', '-o', $birth, '--error-trace'))
+            Invoke-Checked $birth @('3000')
         }
     }
 
