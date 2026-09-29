@@ -24,7 +24,14 @@ here="$(cd "$(dirname "$0")" && pwd)"
 "$@" > "$log" 2>&1 &
 pid=$!
 
+# macOS has no /proc: there `kill -0` is the test, and a zombie is reaped by
+# the `wait` below rather than mistaken for a live child.
 running() {
+  if [ ! -d /proc ]; then
+    kill -0 "$pid" 2>/dev/null || return 1
+    [ "$(ps -o stat= -p "$pid" 2>/dev/null | cut -c1)" != "Z" ]
+    return
+  fi
   [ -d "/proc/$pid" ] || return 1
   state=$(sed 's/.*) //' "/proc/$pid/stat" 2>/dev/null | cut -d' ' -f1)
   [ "$state" != "Z" ] && return 0
@@ -41,7 +48,8 @@ if running; then
   "$here/stall_capture.sh" "$pid" >> "$log" 2>&1
   kill -9 "$pid" 2>/dev/null
   wait "$pid" 2>/dev/null
-  spinning=$(grep -c "parallel/scheduler.cr:97" "$log")
+  # gdb names the line; macOS `sample` names the method and not the line.
+  spinning=$(grep -c "parallel/scheduler.cr:97\|Parallel::Scheduler#resume" "$log")
   if [ "$spinning" -ge 2 ] && ! grep -q "stop_world\|run_collection\|Gcry::Heap#collect" "$log"; then
     echo "STALL CLASSIFIED: Crystal Parallel-scheduler resume deadlock (upstream, not gcry)" >> "$log"
     exit 3

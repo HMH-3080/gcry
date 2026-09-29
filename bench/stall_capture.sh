@@ -11,6 +11,17 @@
 # (`stw_mt_property_test` does, on Linux); without it the /proc half still
 # prints. Linux only.
 pid="$1"
+# macOS: no /proc and no gdb, but `sample` reads every thread's stack of a
+# process the same user owns, without attaching a debugger.
+if [ ! -d /proc ]; then
+  kill -0 "$pid" 2>/dev/null || { echo "stall_capture: no process $pid"; exit 0; }
+  echo "--- stall capture: pid $pid (macOS sample, 2 s)"
+  out="${TMPDIR:-/tmp}/stall-sample-$pid.txt"
+  sample "$pid" 2 -mayDie -file "$out" >/dev/null 2>&1
+  cat "$out" 2>/dev/null | head -n 3000
+  rm -f "$out"
+  exit 0
+fi
 [ -n "$pid" ] && [ -d "/proc/$pid" ] || { echo "stall_capture: no process $pid"; exit 0; }
 echo "--- stall capture: pid $pid, $(ls /proc/$pid/task | wc -l) thread(s)"
 live=""

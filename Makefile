@@ -1586,19 +1586,24 @@ thread-uaf-sample: $(BIN)
 tlab-nursery-sample: $(BIN)
 	$(CRYSTAL) build -Dgc_none -Dgcry_block_headers bench/stw_mt_property_test.cr -o $(BIN)/stw_mt_property_test_hdr --error-trace
 	@mkdir -p $(SAMPLE_DIR)
-	@runs=$${TLAB_NURSERY_RUNS:-100}; only=$${TLAB_ONLY_RUNS:-30}; crashes=0; unengaged=0; \
+	@runs=$${TLAB_NURSERY_RUNS:-100}; only=$${TLAB_ONLY_RUNS:-30}; crashes=0; unengaged=0; stalled=0; upstream=0; \
 	for i in $$(seq 1 $$((runs + only))); do \
 	  if [ $$i -le $$runs ]; then arm=tlab-nursery; flags="--nursery --iterations=50"; seed=$$i; \
 	  else arm=tlab-only; flags="--iterations=200"; seed=$$((i - runs)); fi; \
 	  log=$(SAMPLE_DIR)/$$arm-$$seed.log; \
-	  if GCRY_BITMAP_ALLOC=0 GCRY_POISON_HOLDERS=1 GCRY_THREAD_CENSUS=1 GCRY_THREAD_BLOCK_AUDIT=1 GCRY_STW_WATCHDOG_MS=10000 \
-	      $(BIN)/stw_mt_property_test_hdr --tlab $$flags --seed=$$seed --workers=2,4 > $$log 2>&1; then \
+	  GCRY_BITMAP_ALLOC=0 GCRY_POISON_HOLDERS=1 GCRY_THREAD_CENSUS=1 GCRY_THREAD_BLOCK_AUDIT=1 GCRY_STW_WATCHDOG_MS=10000 \
+	    bench/run_bounded.sh $${TLAB_SAMPLE_LIMIT:-120} $$log -- \
+	    $(BIN)/stw_mt_property_test_hdr --tlab $$flags --seed=$$seed --workers=2,4; rc=$$?; \
+	  if [ $$rc = 0 ]; then \
 	    if grep -qE "tlab_hits=[1-9]" $$log; then rm -f $$log; else unengaged=$$((unengaged+1)); fi; \
+	  elif [ $$rc = 2 ]; then stalled=$$((stalled+1)); \
+	  elif [ $$rc = 3 ]; then upstream=$$((upstream+1)); \
 	  else \
 	    crashes=$$((crashes+1)); \
 	  fi; \
 	done; \
-	echo "tlab-nursery-sample: $$runs tlab+nursery + $$only tlab-only runs, $$crashes failed, $$unengaged without TLAB hits; logs of the failed runs in $(SAMPLE_DIR)"; \
+	echo "tlab-nursery-sample: $$runs tlab+nursery + $$only tlab-only runs, $$crashes failed, $$stalled stalled, $$upstream upstream scheduler deadlock(s) (not counted), $$unengaged without TLAB hits; logs of the failed runs in $(SAMPLE_DIR)"; \
+	if [ "$$stalled" != "0" ]; then grep -h -A60 "STALLED" $(SAMPLE_DIR)/tlab-*.log 2>/dev/null | head -120; exit 1; fi; \
 	if [ "$$unengaged" != "0" ]; then echo "tlab-nursery-sample: $$unengaged run(s) passed without a TLAB hit, so they were not samples of the arm"; exit 1; fi; \
 	if [ "$$crashes" != "0" ]; then grep -h "gcry: SIGSEGV\|holders —\|dying-type audit\|DEAD\|cookie broken" $(SAMPLE_DIR)/tlab-*.log 2>/dev/null | head -40; exit 1; fi
 
