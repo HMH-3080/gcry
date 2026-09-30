@@ -1660,6 +1660,16 @@ module GC
       raise RuntimeError.from_errno("_beginthreadex") if ret.null?
       Gcry::Platform.stage_thread(ret.address)
       Gcry::ThreadBirthRoot.arm(ret.address, arglist)
+      # Crystal stores the handle with `@system_handle = GC.beginthreadex(...)`,
+      # i.e. after this returns, and the thread publishes itself on the thread
+      # list from its own `Thread#start` as soon as it runs. Resumed first, it
+      # could be listed with a zero handle, and a stop then suspended handle 0:
+      # `SuspendThread on thread handle 0x0, error 6` in
+      # `make thread-birth-fiber`, 1 run in 25 on windows-11-arm (2026-09-30).
+      # The caller is always `Thread#init_handle`, so *arglist* is that
+      # `Thread`: its handle is written here, before it can run, and Crystal's
+      # own store afterwards writes the same value.
+      pointerof(arglist.as(::Thread).@system_handle).value = ret.as(LibC::HANDLE)
       if initflag & 4_u32 == 0
         LibC.abort if LibC.ResumeThread(ret) == UInt32::MAX
       end
