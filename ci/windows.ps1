@@ -150,21 +150,22 @@ try {
             Remove-Item Env:GCRY_DISABLE_GREG_ROOTS
 
             # Nothing below a suspended thread's SP is live on this platform, and
-            # the scan stops at the red zone. Asserted on x86_64 only: x64 under
-            # ARM64 emulation kept the block with the window closed, from some
-            # other copy, so there the harness does not discriminate.
+            # the scan stops at the red zone. The red arm (the old 4 KiB) is
+            # asserted on x86_64, where it kept the block 6 of 6; on arm64 the
+            # freed half was 4 of 4 in CI and the red arm is only printed. An
+            # x64 build under ARM64 emulation kept the block with the window
+            # closed, from some other copy, which is not this job.
             Write-Host "Windows dead stack below SP"
             $dsb = Join-Path $PWD 'bin/dead_stack_below_sp_windows.exe'
             Invoke-Checked $crystal (@('build', '-Dgc_none', 'bench/dead_stack_below_sp.cr', '-o', $dsb, '--error-trace'))
             Invoke-Checked $dsb @('--control')
-            if ($Architecture -eq 'x86_64') {
-                Invoke-Checked $dsb @('--expect-freed')
-                $env:GCRY_SUSPENDED_SP_SLACK = '4096'
-                & $dsb --expect-freed
-                if ($LASTEXITCODE -eq 0) { throw 'GCRY_SUSPENDED_SP_SLACK=4096 freed a block the dead stack names' }
-                Remove-Item Env:GCRY_SUSPENDED_SP_SLACK
-            } else {
-                & $dsb
+            Invoke-Checked $dsb @('--expect-freed')
+            $env:GCRY_SUSPENDED_SP_SLACK = '4096'
+            & $dsb --expect-freed
+            $redRc = $LASTEXITCODE
+            Remove-Item Env:GCRY_SUSPENDED_SP_SLACK
+            if ($Architecture -eq 'x86_64' -and $redRc -eq 0) {
+                throw 'GCRY_SUSPENDED_SP_SLACK=4096 freed a block the dead stack names'
             }
 
             Write-Host "Windows thread birth keeps its main fiber"
