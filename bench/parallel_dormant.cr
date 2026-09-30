@@ -147,7 +147,15 @@ scrub_stack(64)
 HEAP.live_attr_roots = true
 majors_before = HEAP.major_collections
 minors_before = HEAP.minor_collections
-2.times { ordinary ? HEAP.collect : GC.collect }
+# The warm budget, the threshold and the live bytes the sweep measured, before
+# and after each collect: the dormant arms fail on macOS when every empty chunk
+# goes warm, i.e. when the budget is at least the whole burst.
+budget = [] of String
+budget << "#{HEAP.empty_chunk_warm_retain >> 20}/#{HEAP.gc_threshold >> 20}"
+2.times do
+  ordinary ? HEAP.collect : GC.collect
+  budget << "#{HEAP.empty_chunk_warm_retain >> 20}/#{HEAP.gc_threshold >> 20} (live #{HEAP.size_class_live_bytes >> 20})"
+end
 after = rss_kib
 after_fp = footprint_kib
 dormant = HEAP.dormant_chunk_bytes
@@ -169,6 +177,7 @@ puts "  the two collects: #{HEAP.major_collections - majors_before} major, #{HEA
      "empties warm #{HEAP.last_empty_warm_bytes >> 20} MB, grace #{HEAP.last_empty_grace_bytes >> 20} MB, " \
      "dormant #{dormant >> 20} MB, unmapped #{HEAP.last_empty_unmap_bytes >> 20} MB, kept #{HEAP.last_empty_kept_bytes >> 20} MB, " \
      "header-blocked #{HEAP.last_empty_header_blocked_bytes >> 20} MB"
+puts "  warm budget / threshold, MB: #{budget.join(" -> ")}"
 # The burst is 64 MiB of garbage. With less than a quarter of it in empty
 # chunks, something held it, and whether those chunks go dormant is not what
 # failed.
