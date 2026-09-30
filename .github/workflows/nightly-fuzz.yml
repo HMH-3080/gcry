@@ -12,6 +12,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # The runner image's apt index goes stale: on 2026-09-30 the mirror
+      # served a newer libevent and 404'd the one the image listed, and
+      # install-crystal, which does not refresh it, failed every Linux job.
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update -qq
       - uses: crystal-lang/install-crystal@v1
         with:
           crystal: "1.21.0"
@@ -40,6 +45,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update -qq
       - uses: crystal-lang/install-crystal@v1
         with:
           crystal: "1.21.0"
