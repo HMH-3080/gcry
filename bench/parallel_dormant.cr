@@ -100,10 +100,34 @@ abort "only #{threads} threads — not multi-mutator, nothing to measure" if thr
 # A plain thread has no execution context, so no IO: the peak is read on main
 # after the join, with the burst still resident because nothing has
 # collected it.
+# Where the burst lived, XOR'd so the record is not itself a root. On a
+# retained burst the holders search looks for words naming either the outer
+# array or its buffer: CI failed this gate once on Linux (run 36625152299,
+# "seeded by … parked 5805 KiB", 1 in ~60 runs, never locally in 30), and a
+# seed total says which root kind held it but not which stack or where.
+module Burst
+  KEY = 0x5A5A_A5A5_5A5A_A5A5_u64
+  @@array = 0_u64
+  @@buffer = 0_u64
+  @@buffer_bytes = 0_u64
+
+  def self.note(keep : Array(Array(Int64))) : Nil
+    @@array = keep.object_id ^ KEY
+    @@buffer = keep.to_unsafe.address ^ KEY
+    @@buffer_bytes = keep.@capacity.to_u64 * sizeof(Array(Int64)).to_u64
+  end
+
+  def self.search_holders : Nil
+    Gcry::PoisonHolders.search(HEAP, @@array ^ KEY, sizeof(Array(Array(Int64))).to_u64 + 16)
+    Gcry::PoisonHolders.search(HEAP, @@buffer ^ KEY, @@buffer_bytes)
+  end
+end
+
 @[NoInline]
 def burst_and_drop : Int32
   keep = Array(Array(Int64)).new
   (64 * 1024 * 1024 // 96).times { keep << Array(Int64).new(4, 0_i64) }
+  Burst.note(keep)
   keep.size
 end
 
@@ -140,6 +164,7 @@ puts "  seeded by stack #{HEAP.first_mark_stack_bytes >> 10} KiB, parked #{HEAP.
 if empty < 16_u64 << 20
   puts "FAIL: the burst was retained: #{after // 1024} MB resident after the collect and only #{empty >> 20} MB of empty chunks. " \
        "A root held the dropped objects (see the seeds above); this says nothing about the release"
+  Burst.search_holders
   exit 1
 end
 if expect_dormant && dormant == 0

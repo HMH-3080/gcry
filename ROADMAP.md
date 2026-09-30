@@ -3756,6 +3756,14 @@ draw of `bench/log/macos/2026-08-10-053800/` — which is what makes it schedula
       the index and aborts with the cycle's entry chunk, its length and the
       entry chunk's flags. So the next sighting names which path linked a
       chunk in twice instead of spinning.
+- [ ] **`make parallel-dormant` retained its burst twice on Linux CI**
+      (`0f97a0b`, `44852e5`; about 2 in 60 runs, 0 in 30 locally). Both times
+      the seeds named a parked fiber's stack (`parked 5805 KiB`), meaning one
+      stale word under the multi-mutator lag window named the burst's
+      5.6 MB buffer. That is a harness that cannot discriminate on that run,
+      not a release defect. On failure it now runs the holders search for
+      the burst array and its buffer, so the next sighting names the fiber
+      and the slot.
 - [ ] **Attribute the residual per-rep spread** — open below. Until it closes it
       bounds every perf claim either release makes: ±2–3pp on phase timings, ±1pp
       on post-GC RSS, at 12 reps.
