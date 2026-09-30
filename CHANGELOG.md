@@ -64,9 +64,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   lock while it links the new thread in. If the thread creating another was
   suspended first, the next lookup waited forever. `make thread-birth-fiber`
   hung in 24 of 50 runs on macos-latest. Now every port and stack bound is
-  resolved before any thread is suspended, the resume and the stack scan use
-  that table, and a thread that joins the list mid-stop makes the stop
-  resolve again. 20 of 20 clean after the fix
+  resolved before any thread is suspended, and the resume and the stack scan
+  use that table. The stop also holds Crystal's thread-list mutex until the
+  world restarts, as Linux and Windows always have, so no thread joins or
+  leaves the list mid-stop. 0 hangs in 20 runs after, and the exit race
+  harness 0 failures in 50 against 0 in 50 before
   (`bench/log/macos/2026-09-29-pthread-list-lock/`).
 
 - **Windows and macOS: the main thread's thread-locals left the root set

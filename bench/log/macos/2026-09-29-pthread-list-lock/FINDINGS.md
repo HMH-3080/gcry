@@ -97,3 +97,37 @@ interleaved (probe run 36622253889):
 Not seen again. [INFERENCE] Step 3 closed it: under step 2 alone, a thread
 born after the last recheck had no bounds at all. Master CI on `e69e36f`:
 all jobs green.
+
+## The resolve-again rounds were a regression, and are gone (2026-09-30)
+
+On `f3364ee` (the first 0.32.0 commit) `make fiber-list-exit-race` failed on
+macOS CI: 1 of 3 shipped children died. Paired on macos-latest, 25 children
+per arm on each of two runners (probe run 36706364101):
+
+| build | children | died |
+|---|---:|---:|
+| `3432a9b` (before any change here) | 50 | 0 |
+| `954d4e1` (table + resolve-again rounds + main-fiber fallback) | 50 | 2 |
+
+Both deaths were poisoned-pointer faults on a freed `Fiber` still linked on
+the fiber list: one in `Fiber.inactive` → `LinkedList#delete`, one in
+`scan_all_fiber_roots`. This is also the "one poisoned-pointer SIGSEGV" of
+the section above. 15 against 15 had not been enough runs to show it.
+
+The root of it: this platform never held Crystal's thread-list mutex across a
+stop, and Linux and Windows always have. So the list moved during the stop,
+and step 2 answered that by resuming everything and resolving again. `131f626`
+takes the mutex from before the resolve until after the resume, as the other
+two platforms do. The list is then frozen, and steps 2 and 3 (the rounds and
+the main-fiber fallback) were removed as dead code. [INFERENCE] The rounds
+were the regression: they resumed and re-suspended every thread in the
+middle of a stop, which no other platform does. Not isolated further;
+removing them is what was measured.
+
+Probe run 36707277643, `131f626` against `3432a9b`, two runners:
+
+| check | result |
+|---|---|
+| exit race children | `3432a9b` 0 of 50, `131f626` 0 of 50 |
+| `thread_birth_fiber` 300 births | 0 stalled in 20 |
+| `make darwin-stw-resume`, `tls-roots`, `fiber-list-exit-race`, `thread-birth-fiber` | all ok |
