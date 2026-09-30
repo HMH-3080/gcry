@@ -159,7 +159,12 @@ puts "  restoring the old cache read (GCRY_INDEX_CACHE_UNCHECKED=1):"
 # runs of something that crashes maybe three times in four, which comes up
 # empty about one run in sixty and takes the whole job red with it
 # (32656849637). Stops at the first crash, so the usual cost is one run.
-control_cap = {runs * 4, 8}.max
+#
+# The cap was 12, and on 2026-09-30 `live` came up empty at 12 on aarch64 CI.
+# The rate there is not three in four. Over the last 28 aarch64 runs `live`
+# took 83 tries for 27 crashes, about 1 in 3, which misses 12 about 0.8% of
+# runs. At 40 it misses about 1e-7, and a try that does not crash is cheap.
+control_cap = 40
 %w[live realloc].each do |arm|
   crashed = 0
   tries = 0
