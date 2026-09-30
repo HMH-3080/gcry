@@ -3785,6 +3785,21 @@ draw of `bench/log/macos/2026-08-10-053800/` — which is what makes it schedula
       fault, and has a budget of 32 attempts (misses at ~3e-9). Locally it
       finishes in 0.3 s; with the control knobs emptied it fails after 32
       (rc 1).
+- [ ] **Two collector locks are unfair to a waiter under back-to-back
+      collections (Windows, 2026-09-30).** Both were found with `cdb` on
+      hung CI probes, and both are livelocks: the collector was still
+      collecting. (1) `@roots_lock`: a thread creating a thread
+      (`ThreadBirthRoot.arm` → `delete_root`) span on it for >120 s while
+      another thread ran `GC.collect` in a loop and three busy threads
+      filled the CPUs. (2) The collection mutex: a thread's own
+      `GC.collect` slept on the SRWLock while a peer re-took it the instant
+      it dropped it, in 2 of 173 `thread_birth_fiber` runs on one runner and
+      0 of about 8 300 on two others. Both need a peer collecting with no
+      gap, which a program only does in a loop over `GC.collect`. The
+      harness now yields after each of its collections. The product fix, if
+      one is ever needed, is a handoff to a waiter, or treating an explicit
+      collect as satisfied once a whole collection has run after it was
+      requested (`bench/log/linux/2026-09-30-windows-zero-handle/`).
 - [ ] **Attribute the residual per-rep spread** — open below. Until it closes it
       bounds every perf claim either release makes: ±2–3pp on phase timings, ±1pp
       on post-GC RSS, at 12 reps.
