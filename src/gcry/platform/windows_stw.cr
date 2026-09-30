@@ -227,6 +227,9 @@ module Gcry::Platform
     grow_handles(n + 8)
 
     @@stw_handle_count = 0
+    @@stop_failed_call = 0_u8
+    @@stop_failed_error = 0_u32
+    @@stop_failed_handle = 0_u64
     error = @@stw_test_fail_suspend
     Thread.unsafe_each do |thread|
       break if error
@@ -238,6 +241,15 @@ module Gcry::Platform
       # `stw_capture_no_slot`, which is the trade Linux already makes.
       handle = thread.to_unsafe
       if LibC.SuspendThread(handle) == UInt32::MAX
+        code = LibC.GetLastError
+        # A thread that has already exited has no stack and no registers
+        # left to scan, so it is skipped rather than failing the stop — the
+        # same call Boehm makes. Anything else still refuses the collection.
+        if LibC.WaitForSingleObject(handle, 0) == LibC::WAIT_OBJECT_0
+          @@stop_skipped_exited &+= 1
+          next
+        end
+        note_stop_failure(1_u8, code, handle)
         error = true
         break
       end
@@ -250,6 +262,7 @@ module Gcry::Platform
       context.clear
       context.value.contextFlags = LibC::CONTEXT_FULL
       if LibC.GetThreadContext(handle, context) == 0
+        note_stop_failure(2_u8, LibC.GetLastError, handle)
         error = true
         break
       end
@@ -264,13 +277,36 @@ module Gcry::Platform
     true
   end
 
+  @@stop_failed_call = 0_u8
+  @@stop_failed_error = 0_u32
+  @@stop_failed_handle = 0_u64
+  @@stop_skipped_exited = 0_u64
+
+  # Threads a stop found listed but already exited, and skipped.
+  def self.stop_skipped_exited : UInt64
+    @@stop_skipped_exited
+  end
+
+  # Allocation-free: the message is built after the locks are released.
+  private def self.note_stop_failure(call : UInt8, code : UInt32, handle : LibC::HANDLE) : Nil
+    @@stop_failed_call = call
+    @@stop_failed_error = code
+    @@stop_failed_handle = handle.address
+  end
+
   def self.raise_thread_suspension_error : NoReturn
     {% if flag?(:gc_none) %}
       process_heap = Gcry.default_heap?
       process_heap.try &.suppress_collect_enter
     {% end %}
     begin
-      raise "gcry: Windows thread suspension or context capture failed"
+      what = case @@stop_failed_call
+             when 1_u8 then "SuspendThread"
+             when 2_u8 then "GetThreadContext"
+             else           "suspension (GCRY_STW_TEST_FAIL_SUSPEND)"
+             end
+      raise "gcry: Windows thread suspension or context capture failed: #{what} on thread handle " \
+            "0x#{@@stop_failed_handle.to_s(16)}, error #{@@stop_failed_error}"
     ensure
       {% if flag?(:gc_none) %}
         process_heap.try &.suppress_collect_leave

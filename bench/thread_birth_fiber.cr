@@ -65,9 +65,10 @@ stop.set(1)
 collector.join
 
 unborn = {% if flag?(:win32) %}Gcry::Platform.unborn_stack_bounds_total{% else %}"n/a"{% end %}
+exited = {% if flag?(:win32) %}Gcry::Platform.stop_skipped_exited{% else %}"n/a"{% end %}
 puts "births #{births}, concurrent collections #{collections.get}, " \
      "fibers freed #{lost.get}, reused #{foreign.get}, " \
-     "threads bounded before their fiber existed #{unborn}"
+     "threads bounded before their fiber existed #{unborn}, listed but exited at a stop #{exited}"
 
 if lost.get + foreign.get > 0
   puts "FAIL a thread's main fiber was collected while the thread was being born"
