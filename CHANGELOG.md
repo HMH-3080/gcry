@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.32.0] - 2026-09-30
+
 ### Fixed
 
 - **A raw buffer of references held only by a class variable was swept.**
@@ -5893,7 +5895,8 @@ now measured (not estimated).
 - Concurrent mark / compacting / precise GC need compiler cooperation.
 - Optional upstream `-Dgc_gcry` backend remains out of scope (shard override is enough).
 
-[Unreleased]: https://github.com/sdogruyol/gcry/compare/v0.31.1...HEAD
+[Unreleased]: https://github.com/sdogruyol/gcry/compare/v0.32.0...HEAD
+[0.32.0]: https://github.com/sdogruyol/gcry/compare/v0.31.1...v0.32.0
 [0.31.1]: https://github.com/sdogruyol/gcry/compare/v0.31.0...v0.31.1
 [0.31.0]: https://github.com/sdogruyol/gcry/compare/v0.30.0...v0.31.0
 [0.30.0]: https://github.com/sdogruyol/gcry/compare/v0.29.0...v0.30.0
