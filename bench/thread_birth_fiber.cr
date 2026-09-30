@@ -38,10 +38,19 @@ collections = Atomic(Int64).new(0_i64)
 lost = Atomic(Int32).new(0)
 foreign = Atomic(Int32).new(0)
 
+# A short gap after each collection. Each birth thread runs its own
+# `GC.collect`, which waits on the collection mutex, and a peer that re-takes
+# that mutex the instant it drops it can keep an unfair lock (SRWLock on
+# Windows) from a waiter indefinitely: 2 of 173 runs on one windows-latest
+# runner stalled that way, the birth thread asleep on the mutex and the
+# collector still collecting (2026-09-30). A yield after the unlock lets the
+# woken waiter take it; a sleep would have been simpler and cut the
+# collections a Linux run overlaps from ~5 000 to 63.
 collector = Thread.new(name: "collector") do
   until stop.get == 1
     GC.collect
     collections.add(1)
+    Thread.yield
   end
 end
 
