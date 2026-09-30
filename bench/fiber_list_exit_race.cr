@@ -137,7 +137,14 @@ clean = 0
 RUNS.times do
   r = BoundedChild.run(exe, ["--child"], base, 300.seconds)
   puts "  shipped: #{r.timed_out ? "timed out" : (r.output.lines.last? || "died with no output")}"
-  clean += 1 if r.ok && r.output.includes?("lost=0")
+  ok = r.ok && r.output.includes?("lost=0")
+  clean += 1 if ok
+  # A crashed child's last line is the bottom of its backtrace, which names
+  # nothing (macOS CI, 2026-09-30: `main +32`). The report's own lines do.
+  unless ok
+    r.output.lines.select { |l| l.includes?("gcry:") || l.includes?("Invalid memory access") || l.includes?("Unhandled") }
+      .first(12).each { |l| puts "    | #{l}" }
+  end
 end
 failures << "shipped: #{RUNS - clean} of #{RUNS} runs lost a holder's object or died" if clean < RUNS
 
