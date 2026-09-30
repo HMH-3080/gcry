@@ -35,6 +35,14 @@ module Gcry
         @chunk_fill_lt75 = 0_u64
         @chunk_fill_ge75 = 0_u64
         @dormant_chunk_bytes = 0_u64
+        @last_sweep_after_world = after_world
+        @last_sweep_multi = sweep_multi_mutator?
+        @last_sweep_release = release_empty_chunks_this_collect?
+        @last_empty_warm_bytes = 0_u64
+        @last_empty_grace_bytes = 0_u64
+        @last_empty_unmap_bytes = 0_u64
+        @last_empty_kept_bytes = 0_u64
+        @last_empty_header_blocked_bytes = 0_u64
         @dontneed_bytes = 0_u64
         @mostly_empty_bytes = 0_u64
         @mostly_empty_chunks = 0_u64
@@ -150,8 +158,10 @@ module Gcry
                     # its pool excludes dormant chunks and pins the cursor's.
                     # Single-mutator lazy sweeps hold the other threads off
                     # (`@block_other_heap`), so only the multi-mutator one races.
-                    can_dormant = false if can_dormant && after_world && sweep_multi_mutator? &&
-                                           !bitmap_alloc_chunk?(chunk)
+                    if can_dormant && after_world && sweep_multi_mutator? && !bitmap_alloc_chunk?(chunk)
+                      can_dormant = false
+                      @last_empty_header_blocked_bytes &+= mapped
+                    end
                     # One cycle's grace before an unmap. The warm budget is
                     # the threshold, and a cycle allocates the threshold, so
                     # the two sit on a knife edge: a class that runs one chunk
@@ -195,6 +205,7 @@ module Gcry
                       bb = BlockHeader::SIZE.to_u64 + p.to_u64
                       freelist_reserve_fully_dead(chunk, class_index, p, bb)
                       warm_budget_used += mapped
+                      @last_empty_warm_bytes &+= mapped
                       ChunkHeader.set_idle(chunk, false) if ChunkHeader.idle?(chunk)
                     elsif grace
                       # Kept mapped outside the budget; the next major unmaps
@@ -202,6 +213,7 @@ module Gcry
                       ChunkHeader.set_idle(chunk, true)
                       @empty_chunk_grace_kept &+= 1
                       grace_budget_used += mapped
+                      @last_empty_grace_bytes &+= mapped
                     elsif can_dormant
                       # Count dormant capacity once, just like bitmap chunks.
                       # The header discover pass only retired live objects;
@@ -232,6 +244,7 @@ module Gcry
                       @heap_size = sat_sub(@heap_size, mapped)
                       @bytes_reclaimed_since_gc += mapped
                       @released_chunk_bytes += mapped
+                      @last_empty_unmap_bytes &+= mapped
                       if ChunkHeader.nursery?(chunk)
                         rebuild_nursery_mask |= bit
                       else
@@ -263,6 +276,7 @@ module Gcry
                       p = SizeClasses.payload(class_index)
                       bb = BlockHeader::SIZE.to_u64 + p.to_u64
                       freelist_reserve_fully_dead(chunk, class_index, p, bb)
+                      @last_empty_kept_bytes &+= mapped
                     end
                   elsif ChunkHeader.dormant?(chunk)
                     # release off: clear stale dormant from a prior process config.

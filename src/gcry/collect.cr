@@ -709,6 +709,19 @@ module Gcry
     # Fully free chunks past the warm budget kept mapped for one more cycle
     # (`ChunkHeader::Flags::IDLE`).
     getter empty_chunk_grace_kept : UInt64 = 0_u64
+    # What the last major sweep did with its fully free size-class chunks, and
+    # the context that decided it. Written only for empty chunks, so free on the
+    # hot path. `make parallel-dormant` prints them: on macOS its dormant arms
+    # found tens of MB of empty chunks and made none dormant, four times in
+    # CI, never locally, and nothing said which branch they took.
+    getter last_sweep_after_world : Bool = false
+    getter last_sweep_multi : Bool = false
+    getter last_sweep_release : Bool = false
+    getter last_empty_warm_bytes : UInt64 = 0_u64
+    getter last_empty_grace_bytes : UInt64 = 0_u64
+    getter last_empty_unmap_bytes : UInt64 = 0_u64
+    getter last_empty_kept_bytes : UInt64 = 0_u64
+    getter last_empty_header_blocked_bytes : UInt64 = 0_u64
     # Research only — `GCRY_UNMAP_GRACE_UNBOUNDED=1`: grace every fully free
     # chunk past the warm budget, as before 2026-09-23, instead of at most one
     # threshold's worth. The red arm of `make idle-rss-after-burst`.

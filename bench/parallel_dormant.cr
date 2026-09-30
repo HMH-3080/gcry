@@ -145,6 +145,8 @@ scrub_stack(64)
 # Which root seeded what. A word naming the outer array's 5.6 MB buffer shows
 # up in its source's bytes; one naming the 24-byte array object barely does.
 HEAP.live_attr_roots = true
+majors_before = HEAP.major_collections
+minors_before = HEAP.minor_collections
 2.times { ordinary ? HEAP.collect : GC.collect }
 after = rss_kib
 after_fp = footprint_kib
@@ -158,6 +160,15 @@ if (pf = peak_fp) && (af = after_fp)
 end
 puts "  seeded by stack #{HEAP.first_mark_stack_bytes >> 10} KiB, parked #{HEAP.first_mark_parked_bytes >> 10} KiB, " \
      "thread #{HEAP.first_mark_thread_bytes >> 10} KiB, static #{HEAP.first_mark_static_bytes >> 10} KiB"
+# What the last sweep did with the empty chunks, and why. The dormant arms
+# failed on macOS CI four times with empty chunks and none dormant; this line
+# is the branch each one took.
+puts "  the two collects: #{HEAP.major_collections - majors_before} major, #{HEAP.minor_collections - minors_before} minor; " \
+     "last major sweep: #{HEAP.last_sweep_after_world ? "after the world" : "in the stop"}, " \
+     "#{HEAP.last_sweep_multi ? "multi" : "single"}-mutator, release #{HEAP.last_sweep_release ? "on" : "off"}; " \
+     "empties warm #{HEAP.last_empty_warm_bytes >> 20} MB, grace #{HEAP.last_empty_grace_bytes >> 20} MB, " \
+     "dormant #{dormant >> 20} MB, unmapped #{HEAP.last_empty_unmap_bytes >> 20} MB, kept #{HEAP.last_empty_kept_bytes >> 20} MB, " \
+     "header-blocked #{HEAP.last_empty_header_blocked_bytes >> 20} MB"
 # The burst is 64 MiB of garbage. With less than a quarter of it in empty
 # chunks, something held it, and whether those chunks go dormant is not what
 # failed.

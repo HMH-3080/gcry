@@ -3773,7 +3773,15 @@ draw of `bench/log/macos/2026-08-10-053800/` — which is what makes it schedula
       (`835a26c`): the `GCRY_PARALLEL_DORMANT_ALL=1` arm left 47 MB of empty
       chunks and 0 dormant. The same arm then ran 0 failures in 40 on that
       runner, both on that commit and on `3432a9b`, before the Darwin stop
-      changes. Not attributed; one sighting.
+      changes. **Not one sighting but four** (2026-09-30): the three CI
+      failures filed under "Low-water skip on Darwin" (`6406f84`, `bf6af40`,
+      `fed4995`) were this gate too. Three had 24–47 MB of empty chunks and
+      none dormant, in either dormant arm, and one retained the burst. The
+      gate now prints what the last major sweep did with each empty chunk
+      (warm, grace, dormant, unmapped, kept, blocked because a header chunk
+      was swept with mutators running) and whether that sweep ran in the stop
+      or after it, single- or multi-mutator. The next failure names the
+      branch.
 - [x] **`make thread-churn-uaf`'s control arm went clean on Linux CI — closed
       2026-09-30.** Three times in a week (`062e6aa`, `6b5afe9` twice). This
       was not the runner losing the window. The verdict is the poisoned arm
