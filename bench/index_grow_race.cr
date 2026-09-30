@@ -47,8 +47,13 @@ STALL_MS  = "50"
 # poisons the old index array before it is freed. Without that, what the
 # reader saw was glibc's choice: 5, 2 and 0 of 5 red on three CI runners
 # (2026-09-28), because a block merged into the arena's top keeps its entries.
-RUNS     = 3
-RED_RUNS = 5
+#
+# The red arm stops at its first red run, up to RED_RUNS. At a fixed 5 it came
+# out all clean once on CI (`1eabff7`): over the last 30 CI runs it went red in
+# 90 of 125 child runs, about 72%, which misses 5 about 0.2% of jobs and 20
+# about 1e-11 (2026-09-30).
+RUNS     =  3
+RED_RUNS = 20
 
 if ARGV.includes?("--child")
   done = Atomic(Int32).new(0)
@@ -105,19 +110,21 @@ end
 failures << "shipped: #{RUNS - clean} of #{RUNS} runs lost objects or died while the index grew" if clean < RUNS
 
 red = 0
-RED_RUNS.times do
+red_tries = 0
+while red == 0 && red_tries < RED_RUNS
   r = BoundedChild.run(exe, ["--child"], base.merge({"GCRY_INDEX_GROW_FREE_FIRST" => "1"}), 120.seconds)
+  red_tries += 1
   red += 1 unless r.ok && r.output.includes?("lost=0")
   puts "  free-first: #{note.call(r)}"
 end
 if red == 0
-  failures << "red arm: all #{RED_RUNS} free-first runs came out clean — the harness no longer reaches " \
+  failures << "red arm: all #{red_tries} free-first runs came out clean — the harness no longer reaches " \
               "the window, so the shipped arm's silence proves nothing"
 end
 
 puts ""
 if failures.empty?
-  puts "ok — growth publishes an intact array; freeing first went red in #{red} of #{RED_RUNS}"
+  puts "ok — growth publishes an intact array; freeing first went red on run #{red_tries}"
 else
   failures.each { |f| puts "FAIL #{f}" }
   exit 1

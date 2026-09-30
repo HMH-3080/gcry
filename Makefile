@@ -1852,7 +1852,8 @@ index-lock-wedge: $(BIN)
 # (glibc safe-linking). Growth now publishes before it frees. Each growth is
 # held 50 ms while main collects back to back; the shipped arm must be clean in
 # every run, and freeing first (`GCRY_INDEX_GROW_FREE_FIRST=1`) must go red in
-# at least one of five (~3 in 4 each). Linux: the corruption is glibc's. ~1 min.
+# one run, stopping at the first and trying up to 20 (~3 in 4 each; a fixed five
+# came out all clean once on CI). Linux: the corruption is glibc's. ~40 s.
 .PHONY: index-grow-race
 index-grow-race: $(BIN)
 	$(CRYSTAL) build -Dgc_none bench/index_grow_race.cr -o $(BIN)/index_grow_race --error-trace
