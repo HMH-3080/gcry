@@ -134,6 +134,21 @@ try {
             # was swept, then published — `Fiber#running?` at C0000005 in the
             # tls-roots step above, 3 runs in 100. Pre-fix, 300 births lost a
             # fiber in 6 runs of 10 (9 in 3 000); 3 000 births, ~8 s here.
+            # A pointer held only in a suspended thread's XMM / NEON register:
+            # this platform reads them out of `GetThreadContext`, and turning
+            # the register roots off must lose the block.
+            Write-Host "Windows FP register roots"
+            $fpr = Join-Path $PWD 'bin/fp_register_root_windows.exe'
+            Invoke-Checked $crystal (@('build', '-Dgc_none', 'bench/fp_register_root.cr', '-o', $fpr, '--error-trace'))
+            Invoke-Checked $fpr @()
+            Invoke-Checked $fpr @('--control')
+            $env:GCRY_DISABLE_GREG_ROOTS = '1'
+            & $fpr
+            if ($LASTEXITCODE -eq 0) {
+                throw 'GCRY_DISABLE_GREG_ROOTS=1 kept a block held only in an FP register'
+            }
+            Remove-Item Env:GCRY_DISABLE_GREG_ROOTS
+
             Write-Host "Windows thread birth keeps its main fiber"
             $birth = Join-Path $PWD 'bin/thread_birth_fiber_windows.exe'
             Invoke-Checked $crystal (@('build', '-Dgc_none', 'bench/thread_birth_fiber.cr', '-o', $birth, '--error-trace'))

@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **macOS: a pointer held only in a suspended thread's FP/SIMD register was
+  not a root.** The stop reads each suspended thread's registers with
+  `thread_get_state`, and it read only the general-purpose ones. Unlike
+  Linux, where the FP registers land in the signal frame below the stack
+  pointer that the scan covers, Mach suspension leaves them in the kernel.
+  A block whose only reference was in `d8` was collected in 5 of 5 runs on
+  macos-latest. The NEON (arm64) or XMM (x86_64) state is now read too, and
+  the block survived 10 of 10. New gate `make fp-register-root` on Linux,
+  macOS and Windows. Each has a red arm for that platform's mechanism, and
+  Windows and Linux were already sound
+  (`bench/log/macos/2026-09-30-fp-register-roots/`).
+
 ### Changed
 
 - **A cycle in a large-object freelist bucket aborts with a report instead of

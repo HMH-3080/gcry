@@ -385,6 +385,24 @@ greg-roots: $(BIN)
 	# conservative stack scan reaches it. The counter is the gate.
 	! GCRY_DISABLE_GREG_ROOTS=1 $(BIN)/greg_roots
 
+# The FP half of the same question. A spawned thread keeps the only copy of a
+# block's address in `d8` (aarch64) or `xmm8` (x86_64), inside one asm loop, and
+# main collects. Linux sees it through the signal frame below the suspended SP
+# (`suspended_sp_slack`), Windows through `GetThreadContext`, and macOS through
+# the FP/SIMD `thread_get_state` it did not make until 2026-09-30, when the
+# block was collected in 5 of 5 runs there. The red arm is the mechanism each
+# platform relies on: the slack at 0 on Linux, the register roots off on macOS.
+# Deterministic on every runner measured (5 of 5 each way). ~1 s.
+fp-register-root: $(BIN)
+	$(CRYSTAL) build -Dgc_none bench/fp_register_root.cr -o $(BIN)/fp_register_root --error-trace
+	$(BIN)/fp_register_root
+	$(BIN)/fp_register_root --control
+	if [ "$$(uname -s)" = Darwin ]; then \
+	  ! GCRY_DISABLE_GREG_ROOTS=1 $(BIN)/fp_register_root; \
+	else \
+	  ! GCRY_SUSPENDED_SP_SLACK=0 $(BIN)/fp_register_root; \
+	fi
+
 # The diagnostics travel with this gate for the same reason they travel with
 # `ec-queue-audit`: it is one that dies. It caught the open use-after-free on
 # 2026-08-16 (aarch64) and again on 2026-08-17 (x86_64) — SIGSEGV inside
