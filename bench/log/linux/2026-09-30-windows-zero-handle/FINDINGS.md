@@ -58,5 +58,19 @@ collector thread (probe runs 36696216329 and 36698009730). Pre is
 The pre run with 155 078 samples also had one collection refused.
 
 Both arms had runs that did not finish within 150 s: pre 3 of 40, post
-4 of 40. The watchdog printed nothing. That hang belongs to the probe
-program, not to this change; it is not understood and is not in any gate.
+4 of 40. The STW watchdog is not built on Windows, so nothing was printed.
+
+**Explained later the same day: a livelock of the probe, not a deadlock.**
+`cdb` attached to five hung runs (probe runs 36740420686–36749990802). Every
+time, a spawner was inside `GC.beginthreadex` → `ThreadBirthRoot.arm` →
+`delete_root`, spinning on `@roots_lock`. The collector holds that lock for
+a whole collection and was running collections back to back, and it was
+still making progress: 500 collections every ~12 s while the process
+"hung", 24 ms each. The probe's watcher and two hog threads keep 3 of the
+runner's 4 vCPUs busy. So the spawner almost never saw the unfair spin lock
+free in the microseconds between collections. `make thread-birth-fiber` has
+the same back-to-back collector without the busy threads and never hung
+(3 000 births, 10 000+ collections per run). It is not a gate and not
+fixed: it needs collections with no gap between them plus an oversubscribed
+CPU. If a real program shows it, the fix is a fairer handoff of
+`@roots_lock` between collections, not anything in the thread-birth path.
