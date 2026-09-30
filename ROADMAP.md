@@ -3762,26 +3762,19 @@ draw of `bench/log/macos/2026-08-10-053800/` — which is what makes it schedula
       Stride phase. Not reproduced in 4 runs. That walk is now bounded and
       reported the same way. Both are large-chunk bookkeeping in the same
       phase; whether they share a cause is open.
-- [ ] **`make parallel-dormant` retained its burst twice on Linux CI**
-      (`0f97a0b`, `44852e5`; about 2 in 60 runs, 0 in 30 locally). Both times
-      the seeds named a parked fiber's stack (`parked 5805 KiB`), meaning one
-      stale word under the multi-mutator lag window named the burst's
-      5.6 MB buffer. That is a harness that cannot discriminate on that run,
-      not a release defect. On failure it now runs the holders search for
-      the burst array and its buffer, so the next sighting names the fiber
-      and the slot. A different failure of the same gate on macOS
-      (`835a26c`): the `GCRY_PARALLEL_DORMANT_ALL=1` arm left 47 MB of empty
-      chunks and 0 dormant. The same arm then ran 0 failures in 40 on that
-      runner, both on that commit and on `3432a9b`, before the Darwin stop
-      changes. **Not one sighting but four** (2026-09-30): the three CI
-      failures filed under "Low-water skip on Darwin" (`6406f84`, `bf6af40`,
-      `fed4995`) were this gate too. Three had 24–47 MB of empty chunks and
-      none dormant, in either dormant arm, and one retained the burst. The
-      gate now prints what the last major sweep did with each empty chunk
-      (warm, grace, dormant, unmapped, kept, blocked because a header chunk
-      was swept with mutators running) and whether that sweep ran in the stop
-      or after it, single- or multi-mutator. The next failure names the
-      branch.
+- [x] **`make parallel-dormant` failed on Linux and macOS CI — diagnosed
+      2026-09-30.** Seven sightings, two failure modes, both of the harness
+      and neither of the release. (1) Budget timing, macOS 8 of 300 runs
+      before the fix: a stale word kept the burst alive through the first
+      collect. The warm budget follows the live set the previous major
+      measured, so it rose to 48 MB, and the collect that found the burst
+      dead kept all 47 MB warm, by design. The harness now collects until the
+      burst is dead and then once more: 0 of 300 on the same runner. (2)
+      Persistent retention, about 1 in 500: words in the dead area below
+      other threads' SPs, inside `suspended_sp_slack`, point into the burst.
+      The holders search names them. On macOS that slack is now dead memory
+      (`bench/log/macos/2026-09-30-fp-register-roots/`), and shrinking it
+      there is the open follow-up.
 - [x] **`make thread-churn-uaf`'s control arm went clean on Linux CI — closed
       2026-09-30.** Three times in a week (`062e6aa`, `6b5afe9` twice). This
       was not the runner losing the window. The verdict is the poisoned arm
