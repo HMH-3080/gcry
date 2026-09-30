@@ -15,8 +15,13 @@ jobs:
       # The runner image's apt index goes stale: on 2026-09-30 the mirror
       # served a newer libevent and 404'd the one the image listed, and
       # install-crystal, which does not refresh it, failed every Linux job.
+      # Bounded and allowed to fail: a mirror that hung the refresh held a job
+      # for 46 minutes on 2026-09-30, and a stale index only matters once the
+      # mirror has moved on.
       - if: runner.os == 'Linux'
-        run: sudo apt-get update -qq
+        timeout-minutes: 5
+        continue-on-error: true
+        run: timeout 240 sudo apt-get update -qq -o Acquire::http::Timeout=30 -o Acquire::Retries=2
       - uses: crystal-lang/install-crystal@v1
         with:
           crystal: "1.21.0"
@@ -46,7 +51,9 @@ jobs:
       - uses: actions/checkout@v7
 
       - if: runner.os == 'Linux'
-        run: sudo apt-get update -qq
+        timeout-minutes: 5
+        continue-on-error: true
+        run: timeout 240 sudo apt-get update -qq -o Acquire::http::Timeout=30 -o Acquire::Retries=2
       - uses: crystal-lang/install-crystal@v1
         with:
           crystal: "1.21.0"
