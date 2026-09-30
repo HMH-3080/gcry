@@ -136,7 +136,7 @@ module Gcry
     end
 
     # Dead stack zeroed below this thread's SP before every park. A thread's
-    # SP is scanned with `suspended_sp_slack` (4 KiB) below it, a margin for
+    # SP is scanned with `suspended_sp_slack` (4 KiB on Linux) below it, a margin for
     # threads stopped *asynchronously*; this one parks at a point of its own
     # choosing, so that window is pure residue of its earlier, deeper calls —
     # a collection it ran while being born, one it ran at idle. One stale word

@@ -149,6 +149,24 @@ try {
             }
             Remove-Item Env:GCRY_DISABLE_GREG_ROOTS
 
+            # Nothing below a suspended thread's SP is live on this platform, and
+            # the scan stops at the red zone. Asserted on x86_64 only: x64 under
+            # ARM64 emulation kept the block with the window closed, from some
+            # other copy, so there the harness does not discriminate.
+            Write-Host "Windows dead stack below SP"
+            $dsb = Join-Path $PWD 'bin/dead_stack_below_sp_windows.exe'
+            Invoke-Checked $crystal (@('build', '-Dgc_none', 'bench/dead_stack_below_sp.cr', '-o', $dsb, '--error-trace'))
+            Invoke-Checked $dsb @('--control')
+            if ($Architecture -eq 'x86_64') {
+                Invoke-Checked $dsb @('--expect-freed')
+                $env:GCRY_SUSPENDED_SP_SLACK = '4096'
+                & $dsb --expect-freed
+                if ($LASTEXITCODE -eq 0) { throw 'GCRY_SUSPENDED_SP_SLACK=4096 freed a block the dead stack names' }
+                Remove-Item Env:GCRY_SUSPENDED_SP_SLACK
+            } else {
+                & $dsb
+            }
+
             Write-Host "Windows thread birth keeps its main fiber"
             $birth = Join-Path $PWD 'bin/thread_birth_fiber_windows.exe'
             Invoke-Checked $crystal (@('build', '-Dgc_none', 'bench/thread_birth_fiber.cr', '-o', $birth, '--error-trace'))

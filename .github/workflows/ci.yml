@@ -719,6 +719,7 @@ jobs:
         run: |
           make greg-roots
           make fp-register-root
+          make dead-stack-below-sp
 
       # The same question one level up: scan_thread_roots pins the Parallel EC's
       # queues, event loop and schedulers by name, and the whole block sits behind
@@ -1809,6 +1810,7 @@ jobs:
           t timeout 300 make fork-test
           t timeout 300 make greg-roots
           t timeout 300 make fp-register-root
+          t timeout 300 make dead-stack-below-sp
           t timeout 300 make scheduler-roots
           t timeout 300 make idle-thread-roots
           t timeout 300 make ivar-layout-roots
@@ -2250,6 +2252,7 @@ jobs:
           make fork-test
           make greg-roots
           make fp-register-root
+          make dead-stack-below-sp
           make scheduler-roots
           make idle-thread-roots
           make ivar-layout-roots

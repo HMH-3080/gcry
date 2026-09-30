@@ -21,6 +21,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Windows and Linux were already sound
   (`bench/log/macos/2026-09-30-fp-register-roots/`).
 
+- **macOS and Windows: dead stack below a suspended thread's SP no longer
+  keeps objects alive.** Every platform scanned 4 KiB below a suspended
+  thread's SP. That window is Linux's: its suspend is a signal, and the
+  kernel writes the interrupted FP registers there. macOS and Windows write
+  nothing on the stack, so there the window held only returned-from frames,
+  and one stale word in it kept a block alive in 6 of 6 runs on each. The
+  default there is now 0 below the red zone (128 bytes on Apple arm64, which
+  had been left at 0 and covered by the window). Linux is unchanged.
+  `GCRY_SUSPENDED_SP_SLACK` still overrides it. New gate
+  `make dead-stack-below-sp`.
+
 ### Changed
 
 - **A cycle in a large-object freelist bucket aborts with a report instead of

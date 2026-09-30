@@ -403,6 +403,21 @@ fp-register-root: $(BIN)
 	  ! GCRY_SUSPENDED_SP_SLACK=0 $(BIN)/fp_register_root; \
 	fi
 
+# The other half of the stop's register story. macOS and Windows stop a thread
+# without a signal, so nothing below its SP is live, and since 2026-09-30 the
+# scan there stops at the red zone instead of 4 KiB lower. A thread leaves
+# copies of a block's address in 4 KiB of dead stack below its SP and sleeps:
+# the block must be freed there, with the old 4 KiB it must be kept (red arm),
+# and a copy held live above the SP must keep it everywhere (control). Linux
+# keeps the 4 KiB for its signal frame and runs the control only. ~1 s.
+dead-stack-below-sp: $(BIN)
+	$(CRYSTAL) build -Dgc_none bench/dead_stack_below_sp.cr -o $(BIN)/dead_stack_below_sp --error-trace
+	$(BIN)/dead_stack_below_sp --control
+	if [ "$$(uname -s)" = Darwin ]; then \
+	  $(BIN)/dead_stack_below_sp --expect-freed && \
+	  ! GCRY_SUSPENDED_SP_SLACK=4096 $(BIN)/dead_stack_below_sp --expect-freed; \
+	fi
+
 # The diagnostics travel with this gate for the same reason they travel with
 # `ec-queue-audit`: it is one that dies. It caught the open use-after-free on
 # 2026-08-16 (aarch64) and again on 2026-08-17 (x86_64) — SIGSEGV inside

@@ -1678,10 +1678,14 @@ module Gcry
       end
     end
 
-    # SysV x86_64 red zone: callees may store below SP without adjusting it.
+    # Bytes below SP a callee may use without moving SP: the SysV x86_64 red
+    # zone (128), Apple arm64's (128), Windows arm64's (16). Linux aarch64 and
+    # Windows x64 have none.
     {% if flag?(:aarch64) && flag?(:win32) %}
       STACK_SCAN_RED_ZONE = 16_u64
     {% elsif flag?(:x86_64) && !flag?(:win32) %}
+      STACK_SCAN_RED_ZONE = 128_u64
+    {% elsif flag?(:aarch64) && flag?(:darwin) %}
       STACK_SCAN_RED_ZONE = 128_u64
     {% else %}
       STACK_SCAN_RED_ZONE = 0_u64
@@ -1706,7 +1710,22 @@ module Gcry
     #
     # Fisher p ≈ 0.004. 4096 is the value that was measured; a full guard→bottom
     # scan fixes it too and costs far more (`full_suspended_stack`).
-    property suspended_sp_slack : UInt64 = 4096_u64
+    #
+    # That is Linux, where the suspend is a signal. macOS (`thread_suspend`)
+    # and Windows (`SuspendThread`) write nothing on the thread's stack: the
+    # interrupted registers, FP/SIMD included, stay in the kernel and are read
+    # from there (`bench/fp_register_root.cr`). So on those two the window is
+    # only dead stack, and from 2026-09-30 it is 0. A stale word in it had kept
+    # a block alive on every run of `bench/dead_stack_below_sp.cr` on
+    # macos-latest and windows-latest, 6 of 6 each, and 0 of 6 once it was 0.
+    # [INFERENCE] It is also what pinned `make parallel-dormant`'s 5.6 MB burst
+    # about 1 run in 500 on macOS: the holders sat at the same frame offset
+    # below three suspended threads' SPs.
+    {% if flag?(:linux) %}
+      property suspended_sp_slack : UInt64 = 4096_u64
+    {% else %}
+      property suspended_sp_slack : UInt64 = 0_u64
+    {% end %}
 
     private def stack_scan_low(sp_addr : UInt64, floor : UInt64) : UInt64
       drop = STACK_SCAN_RED_ZONE.to_u64 &+ @suspended_sp_slack
