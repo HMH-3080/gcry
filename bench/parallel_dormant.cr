@@ -150,12 +150,26 @@ minors_before = HEAP.minor_collections
 # The warm budget, the threshold and the live bytes the sweep measured, before
 # and after each collect: the dormant arms fail on macOS when every empty chunk
 # goes warm, i.e. when the budget is at least the whole burst.
+#
+# Collect until the burst is dead, then once more. The warm budget follows the
+# live set the *previous* major measured. When a stale word kept the burst
+# alive through the first collect (live 42 MB), the budget rose to 48 MB, and
+# the collect that finally found the burst dead kept all 47 MB of it warm, by
+# design. That was 8 of 300 dormant-arm runs on macos-latest and all four CI
+# failures (2026-09-30). The collect after the one that sees it dead decides
+# with a budget that no longer counts it, which is what the arms ask about.
+# A burst still live after six collects is the retention failure below.
 budget = [] of String
 budget << "#{HEAP.empty_chunk_warm_retain >> 20}/#{HEAP.gc_threshold >> 20}"
-2.times do
+collect_once = -> do
   ordinary ? HEAP.collect : GC.collect
   budget << "#{HEAP.empty_chunk_warm_retain >> 20}/#{HEAP.gc_threshold >> 20} (live #{HEAP.size_class_live_bytes >> 20})"
 end
+6.times do
+  collect_once.call
+  break if HEAP.size_class_live_bytes < 16_u64 << 20
+end
+collect_once.call
 after = rss_kib
 after_fp = footprint_kib
 dormant = HEAP.dormant_chunk_bytes
@@ -171,7 +185,7 @@ puts "  seeded by stack #{HEAP.first_mark_stack_bytes >> 10} KiB, parked #{HEAP.
 # What the last sweep did with the empty chunks, and why. The dormant arms
 # failed on macOS CI four times with empty chunks and none dormant; this line
 # is the branch each one took.
-puts "  the two collects: #{HEAP.major_collections - majors_before} major, #{HEAP.minor_collections - minors_before} minor; " \
+puts "  the collects: #{HEAP.major_collections - majors_before} major, #{HEAP.minor_collections - minors_before} minor; " \
      "last major sweep: #{HEAP.last_sweep_after_world ? "after the world" : "in the stop"}, " \
      "#{HEAP.last_sweep_multi ? "multi" : "single"}-mutator, release #{HEAP.last_sweep_release ? "on" : "off"}; " \
      "empties warm #{HEAP.last_empty_warm_bytes >> 20} MB, grace #{HEAP.last_empty_grace_bytes >> 20} MB, " \
