@@ -3763,7 +3763,11 @@ draw of `bench/log/macos/2026-08-10-053800/` — which is what makes it schedula
       5.6 MB buffer. That is a harness that cannot discriminate on that run,
       not a release defect. On failure it now runs the holders search for
       the burst array and its buffer, so the next sighting names the fiber
-      and the slot.
+      and the slot. A different failure of the same gate on macOS
+      (`835a26c`): the `GCRY_PARALLEL_DORMANT_ALL=1` arm left 47 MB of empty
+      chunks and 0 dormant. The same arm then ran 0 failures in 40 on that
+      runner, both on that commit and on `3432a9b`, before the Darwin stop
+      changes. Not attributed; one sighting.
 - [ ] **Attribute the residual per-rep spread** — open below. Until it closes it
       bounds every perf claim either release makes: ±2–3pp on phase timings, ±1pp
       on post-GC RSS, at 12 reps.
