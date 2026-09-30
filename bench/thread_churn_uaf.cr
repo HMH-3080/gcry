@@ -125,14 +125,19 @@ GUARD = {
 # it is not the arm to read the large-object release from.
 POISON = GUARD.merge({"GCRY_POISON_HOLDERS" => "1"})
 
-def run_arm(self_path : String, arm : Arm, attempts : Int32, want : String) : Result
+def run_arm(self_path : String, arm : Arm, attempts : Int32, want : String, stop_on_fault : Bool = false) : Result
   failed = 0
   hung = 0
   report = nil
   remaining = attempts
+  ran = 0
   while remaining > 0
+    # The control needs one fault, not a rate: stop at the first batch that
+    # has one, so the crashing children it is made of stay few.
+    break if stop_on_fault && failed > 0
     lanes = remaining < LANES ? remaining : LANES
     remaining -= lanes
+    ran += lanes
     # One fiber per lane: `BoundedChild.run` waits by polling with `sleep`, so
     # the lanes' children still run side by side.
     done = Channel(BoundedChild::Result).new(lanes)
@@ -169,11 +174,11 @@ def run_arm(self_path : String, arm : Arm, attempts : Int32, want : String) : Re
       end
     end
   end
-  Result.new(arm.name, attempts, failed, hung, report)
+  Result.new(arm.name, ran, failed, hung, report)
 end
 
 puts "=== a live large object released under thread churn ==="
-puts "#{ATTEMPTS} attempts per arm, #{ROUNDS} rounds x #{BATCH} threads each"
+puts(ARGV.includes?("--control") ? "control: the poisoned arm until its first fault, #{ROUNDS} rounds x #{BATCH} threads each" : "#{ATTEMPTS} attempts per arm, #{ROUNDS} rounds x #{BATCH} threads each")
 puts "layout: #{{{ flag?(:gcry_block_headers) ? "block headers" : "headerless" }}}"
 puts ""
 
@@ -230,7 +235,20 @@ arms = [
   {Arm.new("guarded", GUARD.merge(AMP).merge(extra)), "RELEASED"},
   {Arm.new("poisoned", POISON.merge(AMP).merge(extra)), "use-after-free"},
 ]
-results = arms.map { |arm, want| run_arm(self_path, arm, ATTEMPTS, want) }
+# The control's verdict is the poisoned arm alone, so that is all it runs,
+# until its first fault or `CHURN_CONTROL_ATTEMPTS` (default 32). Until
+# 2026-09-30 it ran all four arms at a fixed 8 attempts. On the Linux CI
+# runner the poisoned arm faults about 46% of attempts with the pre-fix shape
+# (2–8 of 8 over 44 runs; locally 17–20 of 24), so 8 attempts missed often
+# enough to fail the gate three times in a week, and the other three arms
+# cost time without counting. 32 attempts miss at 0.54^32, about 3e-9.
+if control
+  arms = arms.select { |arm, _| arm.name == "poisoned" }
+end
+control_attempts = ENV["CHURN_CONTROL_ATTEMPTS"]?.try(&.to_i?) || 32
+results = arms.map do |arm, want|
+  control ? run_arm(self_path, arm, control_attempts, want, stop_on_fault: true) : run_arm(self_path, arm, ATTEMPTS, want)
+end
 
 results.each do |r|
   pct = r.runs.zero? ? 0.0 : 100.0 * r.failed / r.runs
@@ -249,12 +267,11 @@ end
 driven = results.find { |r| r.name == "poisoned" }.not_nil!
 
 if control
-  # The control must still reproduce. Measured on the fix's own A/B: 6 of 18
-  # per layout: poisoned 7 of 12 with the pre-fix shape. Eight attempts here
-  # miss that about once in a thousand runs.
+  # The control must still reproduce: one fault in the poisoned arm is the
+  # whole requirement.
   if driven.failed == 0
     puts "FAIL the control arm did not reproduce in #{driven.runs} attempts. With the"
-    puts "pre-fix shape this workload faults about 58% of attempts, so a clean run"
+    puts "pre-fix shape the poisoned arm faults about half of attempts, so a clean run"
     puts "here means the harness has stopped driving the defect and the shipped arms"
     puts "above prove nothing. That is how the last reproducer for this was lost."
     exit 1

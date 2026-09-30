@@ -3774,13 +3774,16 @@ draw of `bench/log/macos/2026-08-10-053800/` — which is what makes it schedula
       chunks and 0 dormant. The same arm then ran 0 failures in 40 on that
       runner, both on that commit and on `3432a9b`, before the Darwin stop
       changes. Not attributed; one sighting.
-- [ ] **`make thread-churn-uaf`'s control arm went clean on Linux CI twice**
-      (`062e6aa`, `6b5afe9`): the pre-fix shape faulted 0 of 8 in all four
-      arms at once. Locally the same arm faults 17–20 of 24 per arm (Linux
-      x86_64, 2026-09-30). Four arms clean together points at that runner,
-      not at chance (0.42^8 per arm). A rerun passed. If it recurs, the
-      control needs a runner-independent way to open the window, not more
-      attempts.
+- [x] **`make thread-churn-uaf`'s control arm went clean on Linux CI — closed
+      2026-09-30.** Three times in a week (`062e6aa`, `6b5afe9` twice). This
+      was not the runner losing the window. The verdict is the poisoned arm
+      alone, and on CI that arm faults about 46% of attempts with the pre-fix
+      shape (2–8 of 8 in 44 runs), against ~75% locally. So 8 attempts missed
+      at 0.54^8, about 0.7% a run, and three layouts' worth of runs made that
+      weekly. The control now runs only the poisoned arm, stops at its first
+      fault, and has a budget of 32 attempts (misses at ~3e-9). Locally it
+      finishes in 0.3 s; with the control knobs emptied it fails after 32
+      (rc 1).
 - [ ] **Attribute the residual per-rep spread** — open below. Until it closes it
       bounds every perf claim either release makes: ±2–3pp on phase timings, ±1pp
       on post-GC RSS, at 12 reps.

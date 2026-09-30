@@ -1404,20 +1404,22 @@ thread-birth-root: $(BIN)
 # driving the workload and the clean run proves nothing. Measured, 12 attempts
 # each: shipped 0, trigger alone 2, consequence alone 0, both 7.
 #
-# The control runs eight attempts rather than the full count, and the reason is
-# runtime: its children *crash*, and a crashing child under
+# The control runs the poisoned arm only, since that is its whole verdict, and
+# stops at its first fault: its children *crash*, and a crashing child under
 # `GCRY_POISON_HOLDERS=1` walks the whole heap and every stack and then
 # re-faults into Crystal's backtrace printer. Twenty-four of those on a
-# two-core runner took the CI step past ten minutes. At the measured 58%
-# per-attempt rate eight attempts miss once in about a thousand runs.
+# two-core runner took the CI step past ten minutes. The budget is 32 attempts
+# (`CHURN_CONTROL_ATTEMPTS`). The CI runner faults about 46% of them, against
+# ~75% locally, which is why the old fixed 8 across four arms missed three
+# times in a week (2026-09-30).
 thread-churn-uaf: $(BIN)
 	$(CRYSTAL) build -Dgc_none bench/thread_churn_uaf.cr -o $(BIN)/thread_churn_uaf --error-trace
 	$(BIN)/thread_churn_uaf
-	CHURN_ATTEMPTS=8 $(BIN)/thread_churn_uaf --control
+	$(BIN)/thread_churn_uaf --control
 	$(CRYSTAL) build -Dgc_none -Dgcry_block_headers bench/thread_churn_uaf.cr \
 	  -o $(BIN)/thread_churn_uaf_headers --error-trace
 	$(BIN)/thread_churn_uaf_headers
-	CHURN_ATTEMPTS=8 $(BIN)/thread_churn_uaf_headers --control
+	$(BIN)/thread_churn_uaf_headers --control
 
 # The nursery keeps the header representation under every setting, so every
 # mark clear has to gate per *chunk* like the read side does. Gating on the
