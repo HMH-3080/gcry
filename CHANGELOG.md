@@ -33,6 +33,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and 0 after; it runs on Windows, Linux and macOS CI
   (`bench/log/linux/2026-09-29-windows-unborn-thread-stack/`).
 
+- **Windows: a collection could fail while a thread was starting.** Crystal
+  stores a new thread's handle only after `GC.beginthreadex` returns, but the
+  thread was already running and could put itself on the thread list first.
+  A stop in that moment tried to suspend handle 0 and refused the collection
+  with an exception. The handle is now stored before the thread is resumed.
+  A zero-handle entry was seen in 2 of 40 probe runs before and 0 of 40
+  after. A failed suspend now names the call, the handle and the Windows
+  error, and a listed thread that has already exited is skipped
+  (`bench/log/linux/2026-09-30-windows-zero-handle/`).
+
 - **16 and 64 KiB page kernels: the stack low-water skip read the wrong
   pagemap entries, and every Apple Silicon program printed a false warning.**
   On Linux the pagemap probe indexed in a fixed 4 KiB unit, while the kernel
