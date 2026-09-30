@@ -3756,6 +3756,12 @@ draw of `bench/log/macos/2026-08-10-053800/` — which is what makes it schedula
       the index and aborts with the cycle's entry chunk, its length and the
       entry chunk's flags. So the next sighting names which path linked a
       chunk in twice instead of spinning.
+      **A second one, in a different structure (campaign-037, seed 20279):**
+      a large-object freelist bucket's `next_free` chain, in
+      `cache_large_chunk`'s tail walk under the lazy sweep, again in the
+      Stride phase. Not reproduced in 4 runs. That walk is now bounded and
+      reported the same way. Both are large-chunk bookkeeping in the same
+      phase; whether they share a cause is open.
 - [ ] **`make parallel-dormant` retained its burst twice on Linux CI**
       (`0f97a0b`, `44852e5`; about 2 in 60 runs, 0 in 30 locally). Both times
       the seeds named a parked fiber's stack (`parked 5805 KiB`), meaning one

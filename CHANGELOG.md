@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **A cycle in a large-object freelist bucket aborts with a report instead of
+  spinning.** `cache_large_chunk` walks a bucket to its tail, and it spun
+  for 900 s once in stress (`pattern_fuzz`, 1 in 288 runs). The walk is now
+  bounded like `unlink_chunk`'s. Past the bound it prints where the cycle
+  starts, its length, that block's header, whether the block being cached
+  is already on it, and the counters of the ways a block can reach a bucket
+  twice, then aborts (`bench/log/linux/2026-09-30-campaign-037/`).
+
 ## [0.32.0] - 2026-09-30
 
 ### Fixed

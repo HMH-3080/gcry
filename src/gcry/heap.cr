@@ -2259,13 +2259,20 @@ module Gcry
       payload = header.value.size
       bucket = self.class.large_bucket(mapped)
       user = BlockHeader.large_user_from_header(header)
-      # Find tail of bucket freelist.
+      # Find tail of bucket freelist. Every entry is an indexed chunk, so a
+      # walk more than twice the index long has gone round a cycle: it did
+      # once, spinning here for 900 s under the lazy sweep (`pattern_fuzz`
+      # seed 20279, campaign-037, 2026-09-30). Stop and name it.
       tail = @large_freelists[bucket]
+      limit = @chunk_index_count.to_u64 &* 2 &+ 64
+      steps = 0_u64
       while tail
         th = BlockHeader.large_header_from_user(tail)
         tnxt = th.value.next_free
         break if tnxt.null?
         tail = tnxt
+        steps &+= 1
+        report_large_bucket_cycle(bucket, user, limit) if steps > limit
       end
       poison_payload(user, payload) if @poison_freed
       ThreadListWatch.check(header.address, BlockHeader::SIZE.to_u64, ThreadListWatch::SITE_HDR_WRITE)
@@ -2281,6 +2288,84 @@ module Gcry
       end
       @free_bytes.add(mapped)
       @large_free_bytes += mapped
+    end
+
+    private def large_next(user : Void*) : Void*
+      BlockHeader.large_header_from_user(user).value.next_free
+    end
+
+    # A large freelist bucket has a cycle (`cache_large_chunk`'s tail walk
+    # passed *limit*). Floyd over `next_free` from the bucket head, then one
+    # line: where the cycle starts, its length, that entry's header, whether
+    # the block being inserted is already on it, and the counters of the three
+    # ways a block can reach a bucket twice. Aborts: the list cannot be
+    # repaired from here, and the alternative is the spin.
+    private def report_large_bucket_cycle(bucket : Int32, inserting : Void*, limit : UInt64) : NoReturn
+      head = @large_freelists[bucket]
+      slow = head
+      fast = head
+      met = false
+      i = 0_u64
+      while !fast.null? && !large_next(fast).null? && i <= limit
+        slow = large_next(slow)
+        fast = large_next(large_next(fast))
+        i &+= 1
+        if slow == fast
+          met = true
+          break
+        end
+      end
+      start = Pointer(Void).null
+      tail = 0_u64
+      length = 0_u64
+      on_cycle = false
+      if met
+        start = head
+        while start != slow && tail <= limit
+          start = large_next(start)
+          slow = large_next(slow)
+          tail &+= 1
+        end
+        c = start
+        loop do
+          on_cycle = true if c == inserting
+          c = large_next(c)
+          length &+= 1
+          break if c == start || length > limit
+        end
+      end
+      buf = uninitialized UInt8[RawOut::LIMIT]
+      n = RawOut.append(buf.to_unsafe, 0, "gcry: FATAL large freelist bucket ")
+      n = RawOut.append_u64(buf.to_unsafe, n, bucket.to_u64)
+      n = RawOut.append(buf.to_unsafe, n, " has a cycle while caching 0x")
+      n = RawOut.append_hex(buf.to_unsafe, n, inserting.address)
+      if start.null?
+        n = RawOut.append(buf.to_unsafe, n, ": none from the head, the chain is just longer than the index")
+      else
+        h = BlockHeader.large_header_from_user(start).value
+        n = RawOut.append(buf.to_unsafe, n, ": enters at 0x")
+        n = RawOut.append_hex(buf.to_unsafe, n, start.address)
+        n = RawOut.append(buf.to_unsafe, n, " after ")
+        n = RawOut.append_u64(buf.to_unsafe, n, tail)
+        n = RawOut.append(buf.to_unsafe, n, ", length ")
+        n = RawOut.append_u64(buf.to_unsafe, n, length)
+        n = RawOut.append(buf.to_unsafe, n, ", entry size ")
+        n = RawOut.append_u64(buf.to_unsafe, n, h.size.to_u64)
+        n = RawOut.append(buf.to_unsafe, n, " flags 0x")
+        n = RawOut.append_hex(buf.to_unsafe, n, h.flags.to_u64)
+        n = RawOut.append(buf.to_unsafe, n, on_cycle ? "; the block being cached is on it" : "; the block being cached is not on it")
+      end
+      n = RawOut.append(buf.to_unsafe, n, ". cached twice ")
+      n = RawOut.append_u64(buf.to_unsafe, n, @large_cached_twice)
+      n = RawOut.append(buf.to_unsafe, n, ", taken USED ")
+      n = RawOut.append_u64(buf.to_unsafe, n, @large_taken_used)
+      n = RawOut.append(buf.to_unsafe, n, ", cached by sweep ")
+      n = RawOut.append_u64(buf.to_unsafe, n, @large_cached_by_sweep)
+      n = RawOut.append(buf.to_unsafe, n, " / by free ")
+      n = RawOut.append_u64(buf.to_unsafe, n, @large_cached_by_free)
+      n = RawOut.append(buf.to_unsafe, n, @pending_large_cache.null? ? ", no sweep queue pending\n" : ", a sweep queue pending\n")
+      RawOut.flush(buf.to_unsafe, n)
+      LibC.abort
     end
 
     # Exact mapped-size match only — never reuse a fatter VMA for a smaller need
