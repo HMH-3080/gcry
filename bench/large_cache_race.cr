@@ -159,14 +159,20 @@ def gcry_lines(captured : String) : String?
   lines.first(12).join("\n")
 end
 
-def run(exe : String, unlocked : Bool, attempts : Int32) : {Int32, Int32, String?, String?}
+# The unlocked arm is the control and needs one failure. It stops at the first
+# one, up to `attempts * 4`. Each failed child can cost its whole deadline:
+# that made a Windows run take 128 s instead of 7.
+def run(exe : String, unlocked : Bool, attempts : Int32) : {Int32, Int32, String?, String?, Int32}
   bad = 0
   hung = 0
   first = nil
   report = nil
+  tries = 0
   env = {} of String => String
   env["GCRY_TRIM_UNLOCKED"] = unlocked ? "1" : "0"
-  attempts.times do |attempt|
+  (unlocked ? attempts * 4 : attempts).times do |attempt|
+    break if unlocked && bad > 0
+    tries += 1
     result = BoundedChild.run(exe, ["--child"], env)
     captured = result.output
     unless result.ok
@@ -183,10 +189,10 @@ def run(exe : String, unlocked : Bool, attempts : Int32) : {Int32, Int32, String
       end
     end
   end
-  {bad, hung, first, report}
+  {bad, hung, first, report, tries}
 end
 
-locked_bad, locked_hung, locked_note, locked_report = run(exe, false, attempts)
+locked_bad, locked_hung, locked_note, locked_report, _ = run(exe, false, attempts)
 # The hung count belongs on the line itself, not only in the failure list at
 # the end. A reader who sees "1 of 20 failed" cannot tell a use-after-free from
 # a child killed on the deadline, and those are different defects with
@@ -200,8 +206,8 @@ if locked_report
   locked_report.each_line { |l| puts "    #{l}" }
 end
 
-unlocked_bad, unlocked_hung, unlocked_note, _ = run(exe, true, attempts)
-puts "  unlocked (old):      #{unlocked_bad} of #{attempts} failed#{unlocked_note ? "   #{unlocked_note.strip}" : ""}"
+unlocked_bad, unlocked_hung, unlocked_note, _, unlocked_tries = run(exe, true, attempts)
+puts "  unlocked (old):      #{unlocked_bad} of #{unlocked_tries} failed#{unlocked_note ? "   #{unlocked_note.strip}" : ""}"
 
 if locked_hung > 0
   failures << "the locked arm timed out #{locked_hung} of #{attempts} — inspect its captured " \
@@ -212,7 +218,7 @@ if locked_bad > locked_hung
               "and the trim are not serialised"
 end
 if unlocked_bad == 0
-  failures << "the unlocked arm survived #{attempts} attempts, so this harness does not reach the race " \
+  failures << "the unlocked arm survived #{unlocked_tries} attempts, so this harness does not reach the race " \
               "and the locked arm's silence is not evidence"
 end
 
