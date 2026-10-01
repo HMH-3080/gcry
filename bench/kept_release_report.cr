@@ -121,7 +121,8 @@ if text.includes?("faulted inside itself")
               "truncates at `LIMIT`, so anything below that smashes the stack " \
               "instead of losing characters"
 end
-if text.includes?("KEPT by a refused release") && !text.includes?("SIGSEGV at")
+# macOS reports a read of a PROT_NONE page as SIGBUS, Linux as SIGSEGV.
+if text.includes?("KEPT by a refused release") && !text.includes?("SIGSEGV at") && !text.includes?("SIGBUS at")
   failures << "the kept-release line printed and the report's own description of " \
               "the faulting address did not, so the report died between them"
 end
