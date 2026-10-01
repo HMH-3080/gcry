@@ -32,6 +32,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `GCRY_SUSPENDED_SP_SLACK` still overrides it. New gate
   `make dead-stack-below-sp`.
 
+- **macOS: a resumed thread could read the chunk index without its lock.**
+  `chunk_containing` skips `@index_lock` while the world is stopped. Linux
+  stopped clearing that flag after the resume on 2026-08-22, but Darwin's
+  `start_world` still cleared it after `start_world_threads`. Threads that
+  were already running took the unlocked path, against a peer's chunk
+  insert or remove. Over 200 collections on macos-latest that was 90
+  reads; a binary search over an array being shifted yields a garbage
+  `ChunkHeader*`. The flag is now cleared before the resume, and
+  `make stw-index-race` runs on macOS and Windows with `GCRY_STW_LATE_CLEAR=1`
+  as its red arm (`bench/log/macos/2026-10-01-darwin-index-late-clear/`).
+
 ### Changed
 
 - **A cycle in a large-object freelist bucket aborts with a report instead of
