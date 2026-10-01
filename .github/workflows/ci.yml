@@ -1995,7 +1995,11 @@ jobs:
           make poison-freed finalizer-complex mark-audit explicit-collect-barrier
           make parallel-mark-process parallel-mark-termination parallel-mark-stress monitor-gate-deadlock
           make bitmap-marks-freelist stw-slot-precision heap-counters counter-loss
-          make stw-mt-sample find-block-race
+          # Not stw-mt-sample: Crystal's own scheduler deadlock
+          # (crystal-lang/crystal#17486) stalls about 1 run in 700, and there
+          # is no gdb here to tell it from gcry's, so 40 runs failed the job
+          # about one time in twenty. The sound suite's bounded stw_mt stays.
+          make find-block-race
           crystal build -Dgc_none --release bench/interior_only_buffer.cr -o bin/interior_only_buffer --error-trace
           bin/interior_only_buffer
           if GCRY_DISABLE_INTERIOR=1 bin/interior_only_buffer; then echo "FAIL: the base-only arm kept the buffer"; exit 1; fi
@@ -2085,7 +2089,9 @@ jobs:
           make CRYSTAL="$cc" poison-freed finalizer-complex mark-audit explicit-collect-barrier
           make CRYSTAL="$cc" parallel-mark-process parallel-mark-termination parallel-mark-stress monitor-gate-deadlock
           make CRYSTAL="$cc" bitmap-marks-freelist stw-slot-precision heap-counters counter-loss
-          make CRYSTAL="$cc" stw-mt-sample find-block-race
+          # Not stw-mt-sample (see the x86_64 job), and not find-block-race:
+          # its `live` control crashed 0 of 40 here, so the gate cannot be
+          # credited on this platform.
           "$cc" build -Dgc_none --release bench/interior_only_buffer.cr -o bin/interior_only_buffer --error-trace
           bin/interior_only_buffer
           if GCRY_DISABLE_INTERIOR=1 bin/interior_only_buffer; then echo "FAIL: the base-only arm kept the buffer"; exit 1; fi
@@ -2574,8 +2580,10 @@ jobs:
           GCRY_STACK_LOW_WATER=0 ./bin/stw_lag_pause --rounds=5 --dirty-kb=16 --disabled --max-ratio=4 --max-ratio-nolw=30
           # The resident-count low-water path's red arm: with it off the
           # lag-0 configs must not have taken it (the default runs above
-          # require that they did).
-          GCRY_DARWIN_RESIDENT_LOW_WATER=0 ./bin/stw_lag_pause --rounds=5 --dirty-kb=16 --resident-off --max-ratio=30 --max-ratio-nolw=30
+          # require that they did). This arm is slow by design, and its ratio
+          # bound is only a ceiling: 18.6–26.5× in 24 runs, then 31.4× once
+          # against the old 30 (2026-10-01).
+          GCRY_DARWIN_RESIDENT_LOW_WATER=0 ./bin/stw_lag_pause --rounds=5 --dirty-kb=16 --resident-off --max-ratio=60 --max-ratio-nolw=60
           # What the skip saves in memory here, which Linux never showed: a
           # read of an untouched page makes it resident on Darwin, so a
           # full-window scan leaves every parked fiber's unwritten lag window
