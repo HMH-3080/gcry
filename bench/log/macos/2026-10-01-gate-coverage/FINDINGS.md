@@ -73,3 +73,21 @@ Native Windows arm64 stress (probe run 36804662991, three windows-11-arm
 shards, 95 minutes each, the Crystal ARM64 GNU build): 2 813 runs and 0 failures
 or stalls. The earlier windows-11-arm numbers were x64 binaries under
 emulation.
+
+### Windows gate coverage (probe `probe-wingates2`, windows-latest)
+
+The same 26 gates through Git Bash and mingw make. Passed, controls included:
+poison-freed, finalizer-complex, holders-find, mark-audit,
+explicit-collect-barrier, parallel-mark-process, parallel-mark-termination,
+monitor-gate-deadlock, bitmap-marks-freelist, stw-slot-precision,
+heap-counters, counter-loss, stw-mt-sample, find-block-race,
+segv-region-report, index-grow-race (143 s), thread-churn-uaf (280 s). The
+shipped arms of `interior-only-buffer` and `unaligned-only-buffer` passed, and
+their red arms fault when invoked directly; through make they could not run,
+because mingw make does not hand `! cmd` to a shell. These are now
+`test (windows x86_64, gates)`, except the two slow ones.
+
+Not portable: `idle-release` (the idle collector is unsupported on Windows),
+`poison-holders`, `released-range-report` and `kept-release-report` (their
+reports come from the POSIX fault handler), and `nested-spawn-uaf` (its
+control survived 24 tries on Windows). No gate failed on its shipped arm.

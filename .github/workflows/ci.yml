@@ -1983,6 +1983,37 @@ jobs:
         shell: pwsh
         run: ./ci/windows.ps1 -Variant '${{ matrix.variant }}' -Suite samples
 
+  # Linux gates that also hold on Windows. A coverage probe on 2026-10-01 ran
+  # each through Git Bash and mingw make on windows-latest. These passed with
+  # their controls; the two buffer gates' red arms are run here directly
+  # because mingw make does not hand `! cmd` to a shell. Not here:
+  # idle-release (unsupported on Windows), the SegvReport gates (POSIX
+  # handler), nested-spawn-uaf (its control survives on Windows), and
+  # thread-churn-uaf and index-grow-race (280 s and 143 s). ~8 min.
+  test-windows-gates:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    name: test (windows x86_64, gates)
+    steps:
+      - uses: actions/checkout@v7
+      - uses: crystal-lang/install-crystal@v1
+        with:
+          crystal: "1.21.0"
+      - name: Linux gates on Windows
+        shell: bash
+        run: |
+          mkdir -p bin
+          make poison-freed finalizer-complex mark-audit explicit-collect-barrier
+          make parallel-mark-process parallel-mark-termination monitor-gate-deadlock
+          make bitmap-marks-freelist stw-slot-precision heap-counters counter-loss
+          make stw-mt-sample find-block-race
+          crystal build -Dgc_none --release bench/interior_only_buffer.cr -o bin/interior_only_buffer --error-trace
+          bin/interior_only_buffer
+          if GCRY_DISABLE_INTERIOR=1 bin/interior_only_buffer; then echo "FAIL: the base-only arm kept the buffer"; exit 1; fi
+          crystal build -Dgc_none --release bench/unaligned_only_buffer.cr -o bin/unaligned_only_buffer --error-trace
+          bin/unaligned_only_buffer
+          if GCRY_ALIGNED_CANDIDATES=1 bin/unaligned_only_buffer; then echo "FAIL: the aligned-only arm kept the buffer"; exit 1; fi
+
   # Crystal's ARM64 Windows distribution currently uses the GNU/MinGW ABI.
   # Pin the upstream archive; MSYS2 supplies its native linker and libraries.
   test-windows-arm64:
