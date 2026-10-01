@@ -1986,8 +1986,8 @@ jobs:
   # their controls; the two buffer gates' red arms are run here directly
   # because mingw make does not hand `! cmd` to a shell. Not here:
   # idle-release (unsupported on Windows), the SegvReport gates (POSIX
-  # handler), nested-spawn-uaf (its control survives on Windows), and
-  # thread-churn-uaf and index-grow-race (280 s and 143 s). ~8 min.
+  # handler) and nested-spawn-uaf (its control survives on Windows).
+  # ~15 min.
   test-windows-gates:
     runs-on: windows-latest
     timeout-minutes: 30
@@ -2009,6 +2009,10 @@ jobs:
           # is no gdb here to tell it from gcry's, so 40 runs failed the job
           # about one time in twenty. The sound suite's bounded stw_mt stays.
           make find-block-race
+          # The two slow ones from the coverage probe: 143 s and 280 s there,
+          # controls included. Both are use-after-free gates whose red arms
+          # fault on this platform.
+          make index-grow-race thread-churn-uaf
           crystal build -Dgc_none --release bench/interior_only_buffer.cr -o bin/interior_only_buffer --error-trace
           bin/interior_only_buffer
           if GCRY_DISABLE_INTERIOR=1 bin/interior_only_buffer; then echo "FAIL: the base-only arm kept the buffer"; exit 1; fi
