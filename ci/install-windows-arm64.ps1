@@ -4,7 +4,18 @@ $ErrorActionPreference = 'Stop'
 $archive = Join-Path $env:RUNNER_TEMP 'crystal-1.21.0-windows-aarch64.zip'
 $destination = Join-Path $env:RUNNER_TEMP 'crystal-windows-aarch64'
 $url = 'https://github.com/crystal-lang/crystal/releases/download/1.21.0/crystal-1.21.0-windows-aarch64-gnu-unsupported.zip'
-Invoke-WebRequest -Uri $url -OutFile $archive
+# GitHub's release download has answered 5xx (run 36800681397), so a few
+# tries; the checksum below still decides whether what arrived is right.
+for ($try = 1; ; $try++) {
+    try {
+        Invoke-WebRequest -Uri $url -OutFile $archive -TimeoutSec 120
+        break
+    } catch {
+        if ($try -ge 4) { throw }
+        Write-Host "download failed (try $try): $($_.Exception.Message); retrying"
+        Start-Sleep -Seconds (15 * $try)
+    }
+}
 $expected = 'f5d11da3b1727ef49e4acffabcebab6229a631886f6164a94475be1f1390ae83'
 if ((Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expected) {
     throw 'Crystal ARM64 archive checksum mismatch'
