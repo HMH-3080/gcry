@@ -4,7 +4,9 @@
 # Windows.
 set -e
 mkdir -p bin
-b() { crystal build -Dgc_none "$@" --error-trace; }
+# `CRYSTAL` picks the compiler, as in the Makefile: on Windows arm64 the pinned
+# native one is not the first `crystal` on Git Bash's PATH.
+b() { "${CRYSTAL:-crystal}" build -Dgc_none "$@" --error-trace; }
 b samples/sound_profile.cr -o bin/sound_profile
 ./bin/sound_profile
 GCRY_SOUND=1 ./bin/sound_profile
