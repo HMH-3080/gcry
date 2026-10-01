@@ -5,7 +5,7 @@ The Linux CI jobs run about 70 `make` gates that the macOS job did not. A probe
 gate. The rest are Linux-only by construction: `/proc`, signal-based stops,
 soft-dirty, `RLIMIT_AS` and similar.
 
-## Passed, controls included — now in CI as `test (darwin native, gates)`
+## Passed, controls included — now in CI as `test (darwin arm64, gates)` and `test (darwin x86_64, gates)`
 
 poison-freed, poison-holders, finalizer-complex, holders-find,
 parallel-mark-process, parallel-mark-termination, monitor-gate-deadlock,

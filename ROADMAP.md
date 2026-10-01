@@ -3787,10 +3787,11 @@ draw of `bench/log/macos/2026-08-10-053800/` — which is what makes it schedula
       (rc 1).
 - [x] **Linux gates on macOS and Windows — closed 2026-10-01.** About 70
       `make` gates ran on Linux only. Coverage probes ran them on macos-latest,
-      windows-latest and native windows-11-arm, and the ones that hold there
-      are now four CI jobs: `test (darwin native, gates)`, `test (windows
-      x86_64, gates)`, `test (windows arm64, gates)`, and the `GCRY_SOUND=1`
-      suite in each (`ci/sound-suite.sh`). The probes found two product bugs.
+      macos-15-intel, windows-latest and native windows-11-arm, and the ones
+      that hold there now run in four CI jobs, `test (darwin arm64|x86_64,
+      gates)` and `test (windows x86_64|arm64, gates)`, each with the
+      `GCRY_SOUND=1` suite (`ci/sound-suite.sh`). The probes found two
+      product bugs.
       Darwin read the chunk index unlocked after a resume
       (`bench/log/macos/2026-10-01-darwin-index-late-clear/`), and parallel
       mark stalled on narrow graphs on every platform, which became a hang on
