@@ -1794,6 +1794,9 @@ jobs:
           t timeout 300 make thread-block-audit
           t timeout 300 make thread-birth-root
           t timeout 300 make dead-stack-root
+          # The GCRY_SOUND=1 profile and suite: x86_64 runs it, and this is
+          # the arch where register roots were first found missing.
+          t timeout 600 ci/sound-suite.sh
           t timeout 300 make stack-bounds-growth
           # This is the runner the question came from. `scheduler_roots
           # --control` reports one thread outside Crystal's list on every

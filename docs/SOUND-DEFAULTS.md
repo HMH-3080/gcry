@@ -133,7 +133,9 @@ In-process: `Gcry.sound?` / `Gcry.soundness`, with `Gcry.sound_roots?` and
 fields, so they report what the collector *is*, not what an env var asked for.
 `bench/sound_profile_ab.sh` fails the run if a config labelled `sound` reports
 otherwise, and `samples/sound_profile.cr` fails CI if a knob on either axis is
-added later and forgotten in `apply_sound_profile`.
+added later and forgotten in `apply_sound_profile`. That sample and the
+correctness suite under `GCRY_SOUND=1` (`ci/sound-suite.sh`) run on Linux,
+macOS (arm64 and x86_64) and Windows since 2026-10-01; before, Linux only.
 
 ---
 
