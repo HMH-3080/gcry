@@ -3857,6 +3857,16 @@ Target: Make gcry easy to adopt, hard to break, and impossible to ignore.
       over the process-GC and library harnesses, 11.6 h of them the library
       fuzzer; it found the chunk-index growth race.
       `bench/log/linux/2026-09-25-stress-campaign/FINDINGS.md`)
+      By 2026-10-01: at least 39 569 runs and about 270 lane-hours on the
+      Linux host over 15 documented campaigns, each under `bench/log/linux/`
+      with a summary. Every bug they found has its own FINDINGS: the
+      dormant revive and flush races, the parked-fiber SP, the fiber-list
+      exit, and the large-freelist cycle. The last four campaigns (036–039,
+      12 031 runs) had 0 failures, and every timeout in them had the upstream
+      scheduler shape. CI runners added about 1 300 runs on macOS, 15 000 on
+      Windows and 1 300 on Linux aarch64/x86_64
+      (`bench/log/linux/2026-09-30-cross-platform-stress/`). Open: no
+      coverage-guided fuzzer, and no hours on a production workload.
 - [ ] **good-first-issue grooming** — Windows benchmarks, benchmark workloads, specs
 - [ ] **Crystal Discord #gcry channel** — community hub for users and contributors
 
