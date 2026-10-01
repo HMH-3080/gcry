@@ -189,6 +189,13 @@ try {
             $env:DORMANT_FLUSH_RACE_ATTEMPTS = '4'
             Invoke-Checked $dfr @()
             Remove-Item Env:DORMANT_FLUSH_RACE_ATTEMPTS
+
+            # A mutator's large-cache trim against the allocator. The unlocked
+            # control faulted (C0000005) in 5 of 5 on x64 and arm64.
+            Write-Host "Windows large cache race"
+            $lcr = Join-Path $PWD 'bin/large_cache_race_windows.exe'
+            Invoke-Checked $crystal (@('build', '-Dgc_none', 'bench/large_cache_race.cr', '-o', $lcr, '--error-trace'))
+            Invoke-Checked $lcr @()
         }
     }
 
