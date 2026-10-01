@@ -2241,6 +2241,7 @@ jobs:
           make tls-roots
           make darwin-stw-resume
           make thread-birth-fiber
+          make stw-index-race
 
   test-macos:
     runs-on: macos-latest
@@ -2488,6 +2489,10 @@ jobs:
           # are Linux's and do not run here.
           crystal build -Dgc_none bench/stw_watchdog.cr -o bin/stw_watchdog --error-trace
           ./bin/stw_watchdog
+          # Darwin cleared `@world_stopped` after the resume until 2026-10-01,
+          # and resumed threads read the chunk index unlocked (90 in 200
+          # collections). Red arm GCRY_STW_LATE_CLEAR=1. ~3 s.
+          make stw-index-race
 
       # Gated as of 2026-08-15. This ran ungated because the +4 MB ceiling was
       # measured on Linux and Darwin reclaims differently (MADV_FREE_REUSABLE

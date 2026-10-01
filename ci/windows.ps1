@@ -203,6 +203,13 @@ try {
             $wd = Join-Path $PWD 'bin/stw_watchdog_windows.exe'
             Invoke-Checked $crystal (@('build', '-Dgc_none', 'bench/stw_watchdog.cr', '-o', $wd, '--error-trace'))
             Invoke-Checked $wd @()
+
+            # No mutator may read the chunk index unlocked during a stop; the
+            # red arm clears `@world_stopped` after the resume (4 000+ reads).
+            Write-Host "Windows STW chunk-index race"
+            $sir = Join-Path $PWD 'bin/stw_index_race_windows.exe'
+            Invoke-Checked $crystal (@('build', '-Dgc_none', 'bench/stw_index_race.cr', '-o', $sir, '--error-trace'))
+            Invoke-Checked $sir @()
         }
     }
 
