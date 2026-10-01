@@ -44,8 +44,22 @@ Fixed. See `../2026-10-01-darwin-index-late-clear/`.
   does not give it either) and the harness header says so.
 - `oom-no-hang`: killed at 600 s. macOS does not enforce `RLIMIT_AS`, so the
   child never runs out of address space.
-- `mark-clear-index`, `chunk-list-drift`: killed at 600 s while still
-  running arms. Not diagnosed.
+- `mark-clear-index`, `chunk-list-drift`: killed at 600 s. Diagnosed
+  (probe branch `probe-macslow`, with a throwaway cycle detector in
+  `each_chunk`). The arm that never ends in both is the pre-fix shape,
+  `sweep_mutator_latch = false` (`--fast`, and `GCRY_SWEEP_MUTATOR_LATCH=0`
+  in `--control`). On macOS that shape leaves a **cycle** in `@chunks`: 43
+  chunks, the tail pointing back at the head, every node still indexed.
+  A walker spins in `each_chunk`: a mutator in `bitmap_take_pool_chunk`
+  holding `@chunk_list_lock` while the others spin on it, or the collector in
+  `flush_pending_dormant_chunks`. On Linux the same shape faults (2 of 12 on
+  the churn reproducer). [INFERENCE] The difference is mmap address reuse.
+  The pre-fix shape can unmap a chunk that is still on the list, and Darwin
+  hands the same address to the next `map_chunk`, which prepends it with
+  `next = head`. The shipped arm of `chunk_list_drift` finished in every one
+  of 30 attempts, and the shipped arm of `mark_clear_index` passed on the
+  first probe. So the shipped code is not implicated. The two gates cannot
+  run on macOS as written, because their red arms hang instead of failing.
 
 ## Windows
 
