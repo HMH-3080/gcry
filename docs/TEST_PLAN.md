@@ -31,7 +31,7 @@ Phases 1–7 from the plan below are largely **done**. Remaining gaps are narrow
 | **Regression tests** | A- | `spec/regression/` (4 UAF-born cases) + CONTRIBUTING / PR template. |
 | **Performance test** | A- | Same-host % Boehm gate, microbench, pause budget, RSS leak; secondary crystal-metric GC subset (informational). |
 | **Multi-thread test** | A | Library-heap MT property + thread storm + **process-STW MT property** (`bench/stw_mt_property_test.cr`, Parallel=2+4; TLAB@2+4; TLAB+nursery minors). |
-| **Platform test** | B+ | Darwin stubs + Mach STW in CI; Windows still blocked. |
+| **Platform test** | A− | Darwin (arm64 and x86_64) and Windows (x86_64 and native ARM64) STW in CI, plus the Linux gates that hold on each (2026-10-01). |
 
 ### Remaining gaps
 
@@ -41,7 +41,7 @@ Phases 1–7 from the plan below are largely **done**. Remaining gaps are narrow
 | **CHANGELOG audit backlog** | 🟢 Medium | Older Fixed entries lack dedicated regressions (issues, not blockers). |
 | **PR auto-perf comments** | 🟢 Medium | Variance protocol exists; auto PR comment still open. |
 | **WeakRef / large-heap edge cases** | 🟢 Medium | Cycles, resurrection, multi-GB heaps lightly covered. |
-| **Windows process GC** | 🟢 Medium | Blocked — see [INTEGRATION.md](INTEGRATION.md). |
+| **Windows process GC** | 🟢 Medium | Shipped (x86_64 MSVC, ARM64 GNU) — see [WINDOWS.md](WINDOWS.md). Workload benchmarks open. |
 ---
 
 ## 7-Phase Improvement Plan
@@ -248,7 +248,7 @@ For each workload (same host, same job):
 | # | Effort | Task | Deliverable |
 |---|--------|------|-------------|
 | 6.1 | 2-3 weeks | **Darwin test parity** — Soft-dirty stub returns false. Mprotect stub returns false. Stack bounds via `pthread_get_stackaddr_np` tested. Mach `thread_suspend`/resume STW tested. RSS reclaim (`MADV_FREE_REUSABLE`) tested. All existing spec/process_spec green on macOS CI. | Darwin full suite |
-| 6.2 | — | **Windows plan** — **BLOCKED in gcry:** Crystal has basic `-Dgc_none` via Win32 `HeapAlloc` ([crystal#15173](https://github.com/crystal-lang/crystal/pull/15173)), but gcry has no Windows platform layer (`VirtualAlloc`, Win32 STW, barrier stubs, CI). See [INTEGRATION.md](INTEGRATION.md#windows-blocked). When ported: VirtualAlloc/VirtualFree test, Win32 thread suspend test, CI runner. | Blocked (gcry port) |
+| 6.2 | — | **Windows plan** — ported: `VirtualAlloc`/`VirtualFree` arena, `SuspendThread` STW with FP/SIMD capture, x86_64 and native ARM64 CI. See [WINDOWS.md](WINDOWS.md). | Done |
 | 6.3 | 2-3 weeks | **Crystal compiler integration test** — Run Crystal stdlib GC-related specs under `-Dgc_none` + gcry. Verify `GC.malloc`/`GC.free`/`GC.collect` contract. Verify `@crystal_type_id` correctness in compiled output (sample: print type_id at runtime). Test `crystal tool` commands (hierarchy, docs) under gcry. | Compiler integration |
 | 6.4 | 1-2 weeks | **Real-world app test** — `bench/kemal/` full HTTP suite: every endpoint, concurrent requests (wrk -c 100), 1-hour long-running, response correctness (status + body). Fat app scenario (acikturkiye-like: many types, large object graph). | E2E app test |
 
@@ -262,7 +262,7 @@ For each workload (same host, same job):
 - [x] All `process_spec/` tests pass on Linux CI *(and Darwin CI)*
 - [x] Darwin platform stubs are tested (soft-dirty returns false, mprotect returns false) — `spec/platform_darwin_spec.cr`
 - [x] Mach STW test exists and passes on macOS — `process_spec/process_gc_spec.cr` (Darwin section)
-- [x] Windows blocker is tracked and linked — [INTEGRATION.md](INTEGRATION.md#windows-blocked), crystal#15173 + gcry port gap
+- [x] Windows ported — [WINDOWS.md](WINDOWS.md), [INTEGRATION.md](INTEGRATION.md#windows)
 - [x] Crystal stdlib GC spec subset runs green under `-Dgc_none` — `bench/compiler_gc_contract.cr` (mirrors `spec/std/gc_spec.cr` + type_id/malloc contract)
 - [x] `bench/kemal/` E2E — endpoint correctness + concurrent wrk (`bench/kemal_e2e.sh`); CI 60s; full 10-min via `KEMAL_E2E_DURATION=600 make kemal-e2e`
 

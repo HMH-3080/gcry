@@ -309,7 +309,7 @@ Prometheus `/metrics` exposes pause percentiles as gauges.
 ## Scope (honest)
 
 gcry is **production-curious** on Linux and macOS process GC at parallelism 1.
-Windows x86_64 + ARM64 have native unit, process-GC, and release-sample CI coverage.
+Windows x86_64 + ARM64 have native unit, process-GC, and release-sample CI coverage, plus the Linux race and root gates that hold there.
 Windows workload performance has not been benchmarked; see [support details](docs/WINDOWS.md).
 
 | Today | Later / elsewhere |
