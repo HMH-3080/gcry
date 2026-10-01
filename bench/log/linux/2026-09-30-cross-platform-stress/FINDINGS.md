@@ -18,7 +18,8 @@ scripts were `ci/probe/mac.sh` and `ci/probe/win.ps1` on a probe branch.
 Harnesses: `stw_mt_property_test` (plain and with poison), `thread_churn_uaf`
 child, `index_grow_race` child, `fiber_list_exit_race` child,
 `thread_birth_fiber`, and `pattern_fuzz` every fourth round.
-`thread_storm` ran on macOS only; it does not build on Windows.
+`thread_storm` ran on macOS only; it did not build on Windows. Since 2026-10-01
+it builds there without its Unix-signal phase and runs in Windows CI.
 
 - macOS `stw_mt+diag` seed 40088: stalled, with the collector idle and a
   Parallel worker spinning in `Scheduler#resume` (`scheduler.cr:97`). This is
