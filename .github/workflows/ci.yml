@@ -2478,6 +2478,11 @@ jobs:
           # Darwin's default budget is 512 KiB, not 0, so the opt-in was
           # nearly inert here too.
           make parallel-dormant
+          # The post-STW flush walk against a mutator's unmap. Built here from
+          # 2026-10-01; the scheduled control faulted on macos-latest and
+          # macos-15-intel, while the stress control missed (0 of 24), so the
+          # control there is the scheduled one alone. ~10 s.
+          make dormant-flush-race
 
       # Gated as of 2026-08-15. This ran ungated because the +4 MB ceiling was
       # measured on Linux and Darwin reclaims differently (MADV_FREE_REUSABLE

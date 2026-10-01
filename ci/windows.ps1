@@ -179,6 +179,16 @@ try {
             $storm = Join-Path $PWD 'bin/thread_storm_windows.exe'
             Invoke-Checked $crystal (@('build', '-Dgc_none', 'bench/thread_storm.cr', '-o', $storm, '--error-trace'))
             Invoke-Checked $storm @()
+
+            # The post-STW flush walk against a mutator's unmap. The scheduled
+            # control must fault; stress-control children that hang are only
+            # noted, but each costs its 30 s deadline, so four attempts.
+            Write-Host "Windows dormant flush race"
+            $dfr = Join-Path $PWD 'bin/dormant_flush_race_windows.exe'
+            Invoke-Checked $crystal (@('build', '-Dgc_none', 'bench/dormant_flush_race.cr', '-o', $dfr, '--error-trace'))
+            $env:DORMANT_FLUSH_RACE_ATTEMPTS = '4'
+            Invoke-Checked $dfr @()
+            Remove-Item Env:DORMANT_FLUSH_RACE_ATTEMPTS
         }
     }
 
