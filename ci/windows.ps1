@@ -196,6 +196,13 @@ try {
             $lcr = Join-Path $PWD 'bin/large_cache_race_windows.exe'
             Invoke-Checked $crystal (@('build', '-Dgc_none', 'bench/large_cache_race.cr', '-o', $lcr, '--error-trace'))
             Invoke-Checked $lcr @()
+
+            # The STW watchdog on SuspendThread: collector phases, the
+            # pre-suspend step and `stopped-before-flush`.
+            Write-Host "Windows STW watchdog"
+            $wd = Join-Path $PWD 'bin/stw_watchdog_windows.exe'
+            Invoke-Checked $crystal (@('build', '-Dgc_none', 'bench/stw_watchdog.cr', '-o', $wd, '--error-trace'))
+            Invoke-Checked $wd @()
         }
     }
 
