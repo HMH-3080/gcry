@@ -101,9 +101,12 @@ CONTROL_THREADS =  8
 # itself is under two seconds.
 ARM_BUDGET = 60.seconds
 
-# Long enough that a runnable thread certainly ticks, short enough to keep the
-# arm cheap. Workers tick every 5 ms.
-PROGRESS_WINDOW = 250.milliseconds
+# A thread left suspended never ticks again; a runnable one ticks every 5 ms
+# once it gets a CPU. So the check waits for every worker to tick, up to this
+# deadline. A fixed 250 ms window was not enough on macos-15-intel: 70 threads
+# on its few cores left 20 of them untouched for 250 ms with suspends and
+# resumes equal (142/142), 2026-10-01.
+PROGRESS_WINDOW = 5.seconds
 
 child_arm = ARGV.find(&.starts_with?("--child=")).try(&.split('=', 2)[1])
 
@@ -211,12 +214,18 @@ resumed = HEAP.stw_threads_resumed
 
 before = Pointer(UInt64).malloc(want)
 want.times { |i| before[i] = progress[i] }
-sleep PROGRESS_WINDOW
-stalled = 0
-want.times { |i| stalled += 1 if progress[i] == before[i] }
+watch_start = Time.instant
+stalled = want
+loop do
+  sleep 10.milliseconds
+  stalled = 0
+  want.times { |i| stalled += 1 if progress[i] == before[i] }
+  break if stalled == 0 || Time.instant - watch_start >= PROGRESS_WINDOW
+end
+all_ticked_ms = (Time.instant - watch_start).total_milliseconds.to_i
 
 puts "stw_threads_suspended=#{suspended} stw_threads_resumed=#{resumed} " \
-     "stalled=#{stalled}/#{want} after #{PROGRESS_WINDOW.total_milliseconds.to_i}ms"
+     "stalled=#{stalled}/#{want} after #{all_ticked_ms}ms"
 
 failures = [] of String
 
