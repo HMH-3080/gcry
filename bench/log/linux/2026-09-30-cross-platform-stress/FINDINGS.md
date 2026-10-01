@@ -50,6 +50,16 @@ it cut the collections a Linux run overlaps from ~5 000 to 63, which guts
 the gate. With the yield it is ~7 300. The product-side unfairness is a
 ROADMAP item; it needs a peer collecting in a loop with no gap.
 
+## Run 2: Linux runners (probe run 36786149544, master `44d7995`)
+
+The same macOS script, with gdb for the stall capture. This host is x86_64
+only, so these are the first stress hours on Linux aarch64.
+
+| runner | runs | failed or stalled |
+|---|---:|---:|
+| ubuntu-24.04-arm ×2 | 833 | 0 |
+| ubuntu-latest (x86_64) | 493 | 0 |
+
 ## What this says
 
 On fast runners there were 0 failures in about 13 000 Windows runs and
