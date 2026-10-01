@@ -77,19 +77,19 @@ Never `require "gcry"` as process GC without `-Dgc_none` — you fight Boehm.
 | | Precise / moving GC without compiler maps; soft-dirty (Linux-only) |
 | | **Windows** as process GC (see below) |
 
-## Windows (blocked)
+## Windows
 
-Crystal’s stub allocator under `-Dgc_none` works on Windows via Win32 `HeapAlloc` ([crystal-lang/crystal#15173](https://github.com/crystal-lang/crystal/pull/15173)). That is **not** enough for gcry:
+Process GC runs on Windows x86_64 (Crystal's MSVC distribution) and ARM64
+(the GNU/MinGW distribution). Build, platform layer and limits are in
+[WINDOWS.md](WINDOWS.md).
 
 | Need | Status |
 |------|--------|
-| Crystal `-Dgc_none` + reopen `GC` | Partially available (HeapAlloc stub) |
-| `VirtualAlloc` / `VirtualFree` arena mapping | Not in gcry |
-| Win32 thread suspend / resume STW | Not in gcry |
-| Soft-dirty / mprotect stubs | Not in gcry |
-| Windows CI runner | Not set up |
-
-Track progress in [TEST_PLAN.md](TEST_PLAN.md) Phase 6.2. Until a Windows platform layer exists, treat Windows as **out of scope** for process GC.
+| Crystal `-Dgc_none` + reopen `GC` | Same as Linux and macOS |
+| `VirtualAlloc` / `VirtualFree` arena mapping | In gcry |
+| Win32 thread suspend / resume STW | In gcry (`SuspendThread` + `GetThreadContext`, FP/SIMD included) |
+| Soft-dirty / mprotect barrier | Not available; full collections only |
+| Windows CI | x86_64 and native ARM64: specs, samples, and the Linux gates that hold there |
 
 ## Crystal source map (1.21)
 

@@ -18,7 +18,7 @@ Both are **conservative mark–sweep**. gcry is Crystal-native, STW-by-default, 
 | Empty-chunk RSS | Release **default-on** | LibGC reclaim |
 | Root filters | Base-ptr + type_id gate + layout + SP clamp | Interior-friendly |
 | Precise / moving | No (needs compiler) | No |
-| Platforms | **Linux + macOS** (soft-dirty Linux-only) | Broad |
+| Platforms | **Linux, macOS, Windows** (x86_64 and arm64; soft-dirty Linux-only) | Broad |
 | Kemal `/json` (Linux v0.16 carry) | thr ~**87%**, post-GC RSS ~**0.80×** — [PERF.md](PERF.md) | baseline |
 | Kemal `/json` (macOS tip) | thr ~**84%**, post-GC RSS ~**1.01×** — [PERF-macos.md](PERF-macos.md) | baseline |
 
