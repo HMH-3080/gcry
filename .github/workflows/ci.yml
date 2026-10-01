@@ -2216,6 +2216,31 @@ jobs:
           if-no-files-found: ignore
           retention-days: 30
 
+  # Linux gates that also hold on Darwin. They ran on Linux only until a
+  # coverage probe on 2026-10-01 ran each on macos-latest: these passed,
+  # controls included, and `stw-index-race` failed on its shipped arm, which
+  # was a Darwin bug (`bench/log/macos/2026-10-01-darwin-index-late-clear/`).
+  # Own job so the native one stays under its timeout. ~8 min.
+  test-macos-gates:
+    runs-on: macos-latest
+    timeout-minutes: 25
+    name: test (darwin native, gates)
+    steps:
+      - uses: actions/checkout@v7
+      - uses: crystal-lang/install-crystal@v1
+        with:
+          crystal: "1.21.0"
+      - name: Linux gates on Darwin
+        run: |
+          mkdir -p bin
+          make poison-freed poison-holders finalizer-complex holders-find
+          make parallel-mark-process parallel-mark-termination monitor-gate-deadlock
+          make thread-birth-root thread-staging nursery-tlab-smoke trace-smoke ignored-knob-warnings
+          make bitmap-marks-freelist mark-audit released-range-report segv-region-report kept-release-report
+          make index-grow-race large-cache-race nested-spawn-uaf explicit-collect-barrier
+          make stw-slot-precision heap-counters counter-loss interior-only-buffer unaligned-only-buffer
+          make stw-mt-sample idle-release
+
   # Darwin x86_64. No other job runs a Darwin x86_64 build: `make
   # darwin-typecheck` compiles it from Linux, which proves the types and not
   # the register offsets. The FP/SIMD capture added on 2026-09-30 reads
