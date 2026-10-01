@@ -53,6 +53,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is already on it, and the counters of the ways a block can reach a bucket
   twice, then aborts (`bench/log/linux/2026-09-30-campaign-037/`).
 
+- **`GCRY_PARALLEL_MARK`: a narrow graph no longer stalls the mark.** Every
+  scanned object's children went through the shared mark stack under one
+  lock, so on a linked list each node cost two lock round trips, contended
+  by every worker. A 200 000-node chain took 834 ms per collection with 4
+  workers against 4.7 ms serial on Linux, and native Windows arm64 did not
+  finish at all. A worker now keeps scanning a frontier of up to 4 objects
+  itself, and an idle worker checks the stack before taking the lock. The
+  chain takes 17 ms on Linux and 8 ms on Windows arm64, and wide graphs are
+  unchanged within noise. Parallel mark stays experimental
+  (`bench/log/linux/2026-10-01-parallel-mark-local-first/`).
+
 - **macOS and Windows: `GCRY_STW_WATCHDOG_MS` names a stall after the
   suspension as `stopped-before-flush`.** It reported it as `suspend`, because
   only Linux's stop entered that phase. `bench/stw_watchdog.cr` now runs on
