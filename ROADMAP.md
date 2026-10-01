@@ -3798,6 +3798,17 @@ draw of `bench/log/macos/2026-08-10-053800/` — which is what makes it schedula
       Windows arm64 (`bench/log/linux/2026-10-01-parallel-mark-local-first/`).
       What stays Linux-only, and why, is in
       `bench/log/macos/2026-10-01-gate-coverage/`.
+- [ ] **Plain heap counters lost an increment on Intel macOS (2026-10-01).**
+      `make counter-loss`'s plain arm, which is the shipped default, counted 1
+      lost increment in 983 361 comparisons on macos-15-intel CI (run
+      36867713756), with no spawned thread: main and the monitor. That is the
+      v0.20.0 sighting's shape, and the 2026-09-13 item above says the gate is
+      what will notice if it returns. It is not seen on Linux or macOS arm64.
+      Open: which thread writes the counters concurrently on Darwin, and whether
+      Darwin should default to `GCRY_HEAP_COUNTERS_ATOMIC=1`. That cost was not
+      resolvable on Linux. Until then the gate is not run in the Darwin gates
+      job. The loss only skews GC timing (`bytes_since_gc`, `live_objects`); it
+      does not reclaim anything.
 - [ ] **Two collector locks are unfair to a waiter under back-to-back
       collections (Windows, 2026-09-30).** Both were found with `cdb` on
       hung CI probes, and both are livelocks: the collector was still

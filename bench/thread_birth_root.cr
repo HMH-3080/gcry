@@ -167,6 +167,11 @@ if ARGV.includes?("--churn") || ARGV.includes?("--churn-leaking")
   puts "mode: #{leaking ? "churn-leaking (GCRY_THREAD_BIRTH_DEATHS=0)" : "churn"}"
   puts "#{rounds} rounds x #{batch} short-lived threads, one collection each"
 
+  # Threads that were born before the churn and are still alive, the idle
+  # collector among them, hold their roots for as long as they live. The bound
+  # is on top of them: on macos-latest two of those made 17 read as a leak
+  # against a bound of 16 (2026-10-01).
+  baseline = Gcry::ThreadBirthRoot.outstanding
   rounds.times do
     born = [] of Thread
     batch.times { born << Thread.new { } }
@@ -181,14 +186,14 @@ if ARGV.includes?("--churn") || ARGV.includes?("--churn-leaking")
        "released=#{Gcry::ThreadBirthRoot.released} " \
        "reclaimed=#{Gcry::ThreadBirthRoot.reclaimed} " \
        "released_dead=#{Gcry::ThreadBirthRoot.released_dead}"
-  puts "  outstanding=#{outstanding} overflows=#{overflows} " \
+  puts "  outstanding=#{outstanding} (#{baseline} before the churn) overflows=#{overflows} " \
        "unmatched=#{Gcry::ThreadBirthRoot.deaths_unmatched}"
 
   # Bounded means "the live ones and whatever died since the last collection",
   # not "a few": a threshold set near the observed value would pass a fix that
   # only halved the leak. A whole batch of grace is generous and still two
   # orders of magnitude below the broken number.
-  bound = batch * 2
+  bound = baseline + batch * 2
   if leaking
     if outstanding <= bound
       puts "FAIL GCRY_THREAD_BIRTH_DEATHS=0 held only #{outstanding} root(s) of #{births} " \
