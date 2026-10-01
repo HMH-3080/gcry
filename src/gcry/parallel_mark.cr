@@ -279,6 +279,50 @@ module Gcry
       end
     end
 
+    # A worker keeps scanning its own new children while there are few of
+    # them, and publishes only when its push buffer has more than
+    # `MARK_LOCAL_DRAIN_MAX`.
+    #
+    # Publishing every batch's children made a narrow graph pay two
+    # `@mark_lock` round trips per object: this worker's flush, then some
+    # worker's pop. Four threads contending for that lock on a linked list
+    # cost far more than they gained. A 200 000-node chain took 834 ms per
+    # collection with 4 workers against 4.7 ms serial on Linux x86_64, and on
+    # Windows arm64 2 workers took 576 ms, 3 took 3 823 ms and 4 did not finish
+    # in 120 s (2026-10-01). With this, 4 workers take 21 ms on that chain.
+    #
+    # The threshold is small on purpose. At 64, a fanout-6 graph grew two
+    # levels locally before anyone could share it, and 4 workers were 5–8%
+    # slower than with the old protocol (t≈3). At 4, a chain (one or two
+    # children per node) stays local and a wider node is shared at once. On
+    # `gc_phases --fanout=6 --shuffle` the difference from the old protocol
+    # was −0.4% to +3.9%, within what the untouched serial path moved between
+    # the two builds (+4.7%) (`bench/log/linux/2026-10-01-parallel-mark-local-first/`).
+    # The 2026-09-23 local drain, rejected there, published only to an idle
+    # peer and was measured on wide graphs alone.
+    #
+    # The termination check still holds. This worker has been counted busy
+    # since the pop that gave it the batch, and stays busy until the caller's
+    # `add(-1)` after the final flush, so every object it holds, scanned or
+    # not, is covered by that count.
+    private def scan_batch_local_first(batch : Pointer(Void*), m : Int32, slot : Int32) : Nil
+      scan_batch_prefetched(batch, m)
+      if @mark_pushbuf[slot] != 0_u64
+        buf = Pointer(Void*).new(@mark_pushbuf[slot])
+        loop do
+          n = @mark_pushbuf_n[slot]
+          break if n == 0 || n > MARK_LOCAL_DRAIN_MAX
+          batch.copy_from(buf, n)
+          @mark_pushbuf_n[slot] = 0
+          scan_batch_prefetched(batch, n)
+        end
+      end
+      flush_pushbuf(slot)
+    end
+
+    # Must not exceed `MARK_POP_BATCH`: the local drain reuses the pop buffer.
+    MARK_LOCAL_DRAIN_MAX = 4
+
     # Take up to `cap` headers from the shared stack under one lock, and count
     # the taker busy **inside that same critical section**.
     #
@@ -403,8 +447,7 @@ module Gcry
           # still push — which is the invariant the master's check rests on.
           begin
             @parallel_mark_stolen &+= m.to_u64
-            scan_batch_prefetched(batch.to_unsafe, m)
-            flush_pushbuf(slot)
+            scan_batch_local_first(batch.to_unsafe, m, slot)
           ensure
             @mark_workers_busy.add(-1)
           end
@@ -444,8 +487,7 @@ module Gcry
             # below — that branch is only reached when the pop came back
             # empty and nothing was counted.
             begin
-              scan_batch_prefetched(batch.to_unsafe, m)
-              flush_pushbuf(0)
+              scan_batch_local_first(batch.to_unsafe, m, 0)
             ensure
               @mark_workers_busy.add(-1)
             end

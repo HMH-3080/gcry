@@ -17,9 +17,14 @@
 #
 # A live set of `LIVE` objects makes the mark milliseconds long, which is
 # orders of magnitude past a spin-wake, and the steal becomes reliable rather
-# than lucky. The graph is a chain so the mark cannot be satisfied breadth-
-# first from the roots: each node is discovered only by scanning its parent,
-# which is what keeps the shared stack populated for the whole phase.
+# than lucky. The graph is `CHAINS` chains hanging off one array. Each node is
+# discovered only by scanning its parent, so the mark cannot be satisfied
+# breadth-first from the roots. The array's scan publishes every chain head at
+# once, past `MARK_LOCAL_DRAIN_MAX`, so the heads are what the workers steal,
+# and each then follows its chain locally. Until 2026-10-01 this was one chain,
+# and every node went through the shared stack. Since workers keep a narrow
+# frontier to themselves, a single chain is marked by whoever holds it, and
+# nothing is stolen.
 #
 # Until 2026-09-20 the only way this gate came out red was a hand edit of
 # the steal counter. `--disabled` pins workers at 1 through
@@ -36,7 +41,8 @@
 
 require "../src/gcry"
 
-LIVE = 200_000
+LIVE   = 200_000
+CHAINS =     256
 
 class Node
   property succ : Node?
@@ -81,12 +87,16 @@ begin
   before_runs = h.parallel_mark_runs
   before_stolen = h.parallel_mark_stolen
 
-  head = Node.new("pm-0")
-  cur = head
-  (1...LIVE).each do |i|
-    n = Node.new("pm-#{i}")
-    cur.succ = n
-    cur = n
+  per = LIVE // CHAINS
+  heads = Array(Node).new(CHAINS) do |c|
+    head = Node.new("pm-#{c}-0")
+    cur = head
+    (1...per).each do |i|
+      n = Node.new("pm-#{c}-#{i}")
+      cur.succ = n
+      cur = n
+    end
+    head
   end
 
   GC.collect
@@ -118,18 +128,22 @@ begin
   # `make parallel-mark-termination` exists for, and this walk is the cheap
   # end-to-end check that four workers marked the same heap one would have.
   walked = 0
-  node = head.as(Node?)
-  while n = node
-    unless n.tag == "pm-#{walked}"
-      STDERR.puts "FAIL chain damaged at #{walked}: #{n.tag.inspect}"
+  heads.each_with_index do |head, c|
+    i = 0
+    node = head.as(Node?)
+    while n = node
+      unless n.tag == "pm-#{c}-#{i}"
+        STDERR.puts "FAIL chain #{c} damaged at #{i}: #{n.tag.inspect}"
+        exit 1
+      end
+      i += 1
+      node = n.succ
+    end
+    unless i == per
+      STDERR.puts "FAIL chain #{c} truncated at #{i} of #{per}"
       exit 1
     end
-    walked += 1
-    node = n.succ
-  end
-  unless walked == LIVE
-    STDERR.puts "FAIL chain truncated at #{walked} of #{LIVE}"
-    exit 1
+    walked += i
   end
 
   puts "arm: #{disabled ? "--disabled (workers pinned at 1, stolen must stay 0)" : "shipped (4 workers, stolen must rise)"}"
