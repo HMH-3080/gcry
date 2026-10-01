@@ -2216,6 +2216,32 @@ jobs:
           if-no-files-found: ignore
           retention-days: 30
 
+  # Darwin x86_64. No other job runs a Darwin x86_64 build: `make
+  # darwin-typecheck` compiles it from Linux, which proves the types and not
+  # the register offsets. The FP/SIMD capture added on 2026-09-30 reads
+  # `x86_FLOAT_STATE64` at byte 168 on this architecture, and a wrong offset
+  # would not crash — it would silently stop rooting XMM registers. These are
+  # the gates that would notice, plus the stop itself. ~4 min.
+  test-macos-intel:
+    runs-on: macos-15-intel
+    timeout-minutes: 20
+    name: test (darwin x86_64, root gates)
+    steps:
+      - uses: actions/checkout@v7
+      - uses: crystal-lang/install-crystal@v1
+        with:
+          crystal: "1.21.0"
+      - name: Register and stack root gates on Darwin x86_64
+        run: |
+          mkdir -p bin
+          crystal spec -Dgc_none process_spec --error-trace
+          make fp-register-root
+          make dead-stack-below-sp
+          make greg-roots
+          make tls-roots
+          make darwin-stw-resume
+          make thread-birth-fiber
+
   test-macos:
     runs-on: macos-latest
     timeout-minutes: 20

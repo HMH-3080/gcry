@@ -54,8 +54,12 @@ is counted in `Platform.stw_fp_state_failures`.
 | `GCRY_DISABLE_GREG_ROOTS=1` | lost 3 of 3 |
 | `make darwin-stw-resume`, `tls-roots`, `thread-birth-fiber`, `stw-capture-coverage`, `fiber-list-exit-race` | all ok |
 
-x86_64 macOS is type-checked (`make darwin-typecheck`), not run: there is no
-Intel runner in this matrix.
+x86_64 macOS, run on macos-15-intel (2026-10-01): shipped kept 5 of 5,
+control died 2 of 2, `GCRY_DISABLE_GREG_ROOTS=1` lost 2 of 2, so the
+`x86_FLOAT_STATE64` offset (168) is right. `make dead-stack-below-sp`,
+`greg-roots` and `tls-roots` passed there too. A `test (darwin x86_64, root
+gates)` CI job now runs these, because no other job runs a Darwin x86_64
+build.
 
 ## Not changed
 
