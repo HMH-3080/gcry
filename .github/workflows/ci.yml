@@ -2286,9 +2286,16 @@ jobs:
   # was a Darwin bug (`bench/log/macos/2026-10-01-darwin-index-late-clear/`).
   # Own job so the native one stays under its timeout. ~8 min.
   test-macos-gates:
-    runs-on: macos-latest
-    timeout-minutes: 25
-    name: test (darwin native, gates)
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: macos-latest, arch: arm64}
+          # Intel took 16 min on the probe (2026-10-01), arm64 about 9.
+          - {os: macos-15-intel, arch: x86_64}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 35
+    name: test (darwin ${{ matrix.arch }}, gates)
     steps:
       - uses: actions/checkout@v7
       - uses: crystal-lang/install-crystal@v1
