@@ -43,30 +43,39 @@ scrubbing dead stack. Conservative root scans include that red zone.
   threads and fibers are rooted through the runtime thread list and fiber roots;
   application references held only in native TLS require explicit roots.
 - `SuspendThread` and `GetThreadContext` stop Crystal threads and capture stack
-  pointers, integer registers, and floating-point/SIMD registers. `ResumeThread`
-  releases them after collection. A failed suspend/capture resumes all threads
-  already stopped and fails the collection instead of scanning incomplete roots.
+  pointers, integer registers, and floating-point/SIMD registers; nothing is
+  written below the stopped SP, so the stack scan starts at it
+  (`GCRY_SUSPENDED_SP_SLACK` is 0 here). `ResumeThread`
+  releases them after collection. A thread that has already exited (its handle
+  is signaled) is skipped: it has no stack or registers left to scan. Any other
+  failed suspend/capture resumes all threads already stopped and fails the
+  collection instead of scanning incomplete roots.
   Failure is reported without allocating until suspension and collector locks
   are released. Exception creation then suppresses process-GC auto-collection,
   including when suspension is requested directly through `GC.stop_world`.
 - Stopped-world stderr diagnostics use `WriteFile` on the standard error handle,
   bypassing CRT descriptor locks that a suspended mutator might hold.
-- Thread creation publishes its birth root before resuming the new thread.
+- Thread creation publishes its birth root before resuming the new thread, and
+  writes the thread's handle before the thread is listed, so a stop never sees
+  a listed thread with a zero handle.
   SRW locks and FLS provide collector mutexes and cursor TLS; deleting a TLS key
   does not invoke cursor exit callbacks.
 
 ## Current limits
 
-- The native suspension table supports up to 64 other Crystal
-  threads per collection, including runtime service threads. Exceeding that
-  capacity raises an error after resuming the threads already suspended.
+- The capture table starts at 64 threads and grows, sized before the first
+  `SuspendThread`. A thread that appears between the count and the stop and
+  does not fit is suspended and scanned without its SP clamp or registers
+  (`stw_capture_no_slot`), the trade Linux makes.
 - Fork, Unix signal diagnostics, soft-dirty, and the mprotect write barrier are
   unavailable. The conservative full-collection path remains available.
 - The research stack-map walker assumes a SysV fiber context. Windows ignores
   `GCRY_PRECISE_STACK` and `GCRY_PRECISE_FIBERS` with a warning and retains
   conservative stack scanning.
 - Existing Linux/macOS throughput and RSS measurements do not describe Windows.
-  Windows workload benchmarks and long-running parallel stress remain future work.
+  Windows workload benchmarks remain future work. Parallel stress has run on
+  CI runners: about 15 000 bounded runs, no failures on fast runners
+  (`bench/log/linux/2026-09-30-cross-platform-stress/`).
 
 ## Tests and CI
 
