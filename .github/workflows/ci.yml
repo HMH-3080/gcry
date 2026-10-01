@@ -715,6 +715,12 @@ jobs:
         run: |
           make parallel-mark-process
 
+      # A helper late to see a cycle end took the finalizer pass's work
+      # without the lock; `thread_storm` with 4 workers failed 182 of 729 runs.
+      - name: Parallel mark under thread churn
+        run: |
+          make parallel-mark-stress
+
       - name: Suspended-thread register roots
         run: |
           make greg-roots
@@ -1802,6 +1808,7 @@ jobs:
           # one contended lock twice. Not run on this arch before.
           t timeout 300 make parallel-mark-process
           t timeout 600 make parallel-mark-termination
+          t timeout 300 make parallel-mark-stress
           t timeout 300 make stack-bounds-growth
           # This is the runner the question came from. `scheduler_roots
           # --control` reports one thread outside Crystal's list on every
@@ -1986,7 +1993,7 @@ jobs:
         run: |
           mkdir -p bin
           make poison-freed finalizer-complex mark-audit explicit-collect-barrier
-          make parallel-mark-process parallel-mark-termination monitor-gate-deadlock
+          make parallel-mark-process parallel-mark-termination parallel-mark-stress monitor-gate-deadlock
           make bitmap-marks-freelist stw-slot-precision heap-counters counter-loss
           make stw-mt-sample find-block-race
           crystal build -Dgc_none --release bench/interior_only_buffer.cr -o bin/interior_only_buffer --error-trace
@@ -2076,7 +2083,7 @@ jobs:
           # The pinned native compiler, as a path make's nested shells keep.
           cc=$(cygpath -m "$GCRY_CI_CRYSTAL")
           make CRYSTAL="$cc" poison-freed finalizer-complex mark-audit explicit-collect-barrier
-          make CRYSTAL="$cc" parallel-mark-process parallel-mark-termination monitor-gate-deadlock
+          make CRYSTAL="$cc" parallel-mark-process parallel-mark-termination parallel-mark-stress monitor-gate-deadlock
           make CRYSTAL="$cc" bitmap-marks-freelist stw-slot-precision heap-counters counter-loss
           make CRYSTAL="$cc" stw-mt-sample find-block-race
           "$cc" build -Dgc_none --release bench/interior_only_buffer.cr -o bin/interior_only_buffer --error-trace
@@ -2305,7 +2312,7 @@ jobs:
         run: |
           mkdir -p bin
           make poison-freed poison-holders finalizer-complex holders-find
-          make parallel-mark-process parallel-mark-termination monitor-gate-deadlock
+          make parallel-mark-process parallel-mark-termination parallel-mark-stress monitor-gate-deadlock
           make thread-birth-root thread-staging nursery-tlab-smoke trace-smoke ignored-knob-warnings
           make bitmap-marks-freelist mark-audit released-range-report segv-region-report kept-release-report
           make index-grow-race large-cache-race nested-spawn-uaf explicit-collect-barrier

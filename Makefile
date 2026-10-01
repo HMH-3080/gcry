@@ -196,6 +196,19 @@ parallel-mark-process: $(BIN)
 	$(BIN)/parallel_mark_process
 	GCRY_DISABLE_PARALLEL_MARK=1 $(BIN)/parallel_mark_process --disabled
 
+# Parallel mark under thread churn. A helper late to see a cycle end took the
+# finalizer pass's work without the lock, and live objects were reclaimed:
+# `thread_storm` with 4 workers failed 182 of 729 runs, 0 of 732 after the fix
+# (bench/log/linux/2026-10-01-parallel-mark-late-pop/). Ten runs miss a
+# regression of that size about 6% of the time. ~15 s.
+.PHONY: parallel-mark-stress
+parallel-mark-stress: $(BIN)
+	$(CRYSTAL) build -Dgc_none bench/thread_storm.cr -o $(BIN)/thread_storm --error-trace
+	@for i in 1 2 3 4 5 6 7 8 9 10; do \
+	  GCRY_PARALLEL_MARK=4 $(BIN)/thread_storm --iterations=1000 --workers=10 > $(BIN)/parallel_mark_stress.log 2>&1 || \
+	    { tail -20 $(BIN)/parallel_mark_stress.log; echo "FAIL: thread_storm with GCRY_PARALLEL_MARK=4 failed on run $$i"; exit 1; }; \
+	done; echo "ok — 10 of 10 thread_storm runs with four mark workers"
+
 microbench: $(BIN)
 	$(CRYSTAL) build -Dgc_none bench/micro/run_all.cr -o $(BIN)/microbench
 	$(BIN)/microbench
