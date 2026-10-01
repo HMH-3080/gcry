@@ -205,7 +205,13 @@ puts ""
 errs += test.phase2_rapid_create_destroy((iterations / 4).to_i)
 puts ""
 
-errs += test.phase3_signal_trap((iterations / 4).to_i)
+# Phase 3 traps a Unix signal; Windows has none to send, and phases 1 and 2,
+# the thread churn, are the part that is about the collector.
+{% if flag?(:win32) %}
+  puts "Phase 3: skipped on Windows (no Unix signals)"
+{% else %}
+  errs += test.phase3_signal_trap((iterations / 4).to_i)
+{% end %}
 puts ""
 
 puts "=== Summary ==="

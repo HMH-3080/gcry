@@ -172,6 +172,13 @@ try {
             $birth = Join-Path $PWD 'bin/thread_birth_fiber_windows.exe'
             Invoke-Checked $crystal (@('build', '-Dgc_none', 'bench/thread_birth_fiber.cr', '-o', $birth, '--error-trace'))
             Invoke-Checked $birth @('3000')
+
+            # Spawn storm and rapid create/join under collection. Phase 3 is
+            # a Unix signal and is skipped here.
+            Write-Host "Windows thread storm"
+            $storm = Join-Path $PWD 'bin/thread_storm_windows.exe'
+            Invoke-Checked $crystal (@('build', '-Dgc_none', 'bench/thread_storm.cr', '-o', $storm, '--error-trace'))
+            Invoke-Checked $storm @()
         }
     }
 
