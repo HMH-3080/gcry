@@ -2033,6 +2033,56 @@ jobs:
         shell: pwsh
         run: ./ci/windows.ps1 -Architecture aarch64 -Variant '${{ matrix.variant }}' -Suite samples
 
+  # The gates of `test (windows x86_64, gates)` on native Windows arm64, with
+  # the pinned native compiler (make's `CRYSTAL`; the first `crystal` on Git
+  # Bash's PATH is a different build). Added once parallel mark stopped
+  # hanging here (bench/log/linux/2026-10-01-parallel-mark-local-first/):
+  # its parallel arm did not finish in 900 s. ~22 min.
+  test-windows-arm64-gates:
+    runs-on: windows-11-arm
+    timeout-minutes: 40
+    name: test (windows arm64, gates)
+    steps:
+      - uses: actions/checkout@v7
+      - uses: msys2/setup-msys2@v2
+        id: msys2
+        with:
+          msystem: CLANGARM64
+          update: true
+      - name: Install ARM64 linker and libraries
+        shell: msys2 {0}
+        run: |
+          for attempt in 1 2 3; do
+            if pacman --noconfirm -S --needed mingw-w64-clang-aarch64-crystal mingw-w64-clang-aarch64-lld; then
+              exit 0
+            fi
+            sleep "$((attempt * 5))"
+          done
+          exit 1
+      - name: Install pinned native ARM64 Crystal
+        shell: pwsh
+        env:
+          MSYS2_LOCATION: ${{ steps.msys2.outputs.msys2-location }}
+        run: ./ci/install-windows-arm64.ps1 -Msys2Location $env:MSYS2_LOCATION
+      - name: Linux gates on Windows arm64
+        shell: bash
+        run: |
+          mkdir -p bin
+          # The pinned native compiler, as a path make's nested shells keep.
+          cc=$(cygpath -m "$GCRY_CI_CRYSTAL")
+          make CRYSTAL="$cc" poison-freed finalizer-complex mark-audit explicit-collect-barrier
+          make CRYSTAL="$cc" parallel-mark-process parallel-mark-termination monitor-gate-deadlock
+          make CRYSTAL="$cc" bitmap-marks-freelist stw-slot-precision heap-counters counter-loss
+          make CRYSTAL="$cc" stw-mt-sample find-block-race
+          "$cc" build -Dgc_none --release bench/interior_only_buffer.cr -o bin/interior_only_buffer --error-trace
+          bin/interior_only_buffer
+          if GCRY_DISABLE_INTERIOR=1 bin/interior_only_buffer; then echo "FAIL: the base-only arm kept the buffer"; exit 1; fi
+          "$cc" build -Dgc_none --release bench/unaligned_only_buffer.cr -o bin/unaligned_only_buffer --error-trace
+          bin/unaligned_only_buffer
+          if GCRY_ALIGNED_CANDIDATES=1 bin/unaligned_only_buffer; then echo "FAIL: the aligned-only arm kept the buffer"; exit 1; fi
+          CRYSTAL="$cc" ci/sound-suite.sh
+
+
   # Native macOS (Apple Silicon runner). Soft-dirty stays Linux-only.
   # The Darwin half of the perf gate. It ran report-only from 2026-09-22 until
   # it had its own baseline — a tolerance describes a runner class's spread,
