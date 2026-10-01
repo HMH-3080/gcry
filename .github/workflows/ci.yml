@@ -1054,40 +1054,14 @@ jobs:
         run: |
           GCRY_DEBUG_INVARIANTS=1 crystal spec --error-trace
 
-      # Root-completeness profile (docs/SOUND-DEFAULTS.md). The sample asserts
-      # the *observed* heap state matches GCRY_SOUND, so a root heuristic added
-      # later but forgotten in apply_sound_profile fails here.
-      - name: Sound-roots profile smoke
-        run: |
-          crystal build -Dgc_none samples/sound_profile.cr -o bin/sound_profile
-          ./bin/sound_profile
-          GCRY_SOUND=1 ./bin/sound_profile
-          # An explicit knob must still override the profile.
-          GCRY_SOUND=1 GCRY_SCRUB_FIBERS=1 ./bin/sound_profile
-          # Barrier axis: sound roots + a page-dirty barrier must demote the
-          # label. The nursery only exists on the header layout.
-          crystal build -Dgc_none -Dgcry_block_headers samples/sound_profile.cr -o bin/sound_profile_hdr
-          GCRY_SOUND=1 GCRY_NURSERY=262144 ./bin/sound_profile_hdr
-
-      # The sound profile is the configuration a correctness claim cites, so it
-      # has to stay green — a heuristic-off path that only runs at bench time
-      # would rot. Reuses binaries built above.
-      - name: Correctness suite under GCRY_SOUND=1
-        env:
-          GCRY_STW_WATCHDOG_MS: "10000"
-        run: |
-          GCRY_SOUND=1 ./bin/stress 300
-          GCRY_SOUND=1 ./bin/json_churn 800
-          GCRY_SOUND=1 ./bin/alloc 500
-          GCRY_SOUND=1 ./bin/pattern_fuzz --seed=1 --phases=20 --objects-per-phase=1000
-          GCRY_SOUND=1 ./bin/thread_storm --iterations=100 --workers=4
-          GCRY_SOUND=1 ./bin/finalizer_complex
-          GCRY_SOUND=1 ./bin/nursery_headers
-          GCRY_SOUND=1 ./bin/stw_mt_property_test --seed=1 --iterations=50 --workers=2,4
-          timeout 120 env GCRY_SOUND=1 GCRY_STRESS=1 GCRY_STRESS_EVERY=32 ./bin/stress 100
-          # Fully conservative: sound roots + no layout tables.
-          GCRY_SOUND=1 GCRY_DISABLE_LAYOUT=1 ./bin/json_churn 800
-          GCRY_SOUND=1 GCRY_DISABLE_LAYOUT=1 ./bin/pattern_fuzz --seed=2 --phases=20 --objects-per-phase=1000
+      # Root-completeness profile (docs/SOUND-DEFAULTS.md) and the correctness
+      # suite under it. The profile sample asserts the *observed* heap state
+      # matches GCRY_SOUND, so a root heuristic added later but forgotten in
+      # apply_sound_profile fails here; the suite keeps the configuration a
+      # correctness claim cites from rotting. The same script runs on macOS
+      # and Windows.
+      - name: GCRY_SOUND=1 profile and correctness suite
+        run: ci/sound-suite.sh
 
   # Gates that cost minutes because they **sample**: each drives a rare window
   # many times over, so the cost is the sample size and not the assertion. They
@@ -2013,6 +1987,7 @@ jobs:
           crystal build -Dgc_none --release bench/unaligned_only_buffer.cr -o bin/unaligned_only_buffer --error-trace
           bin/unaligned_only_buffer
           if GCRY_ALIGNED_CANDIDATES=1 bin/unaligned_only_buffer; then echo "FAIL: the aligned-only arm kept the buffer"; exit 1; fi
+          ci/sound-suite.sh
 
   # Crystal's ARM64 Windows distribution currently uses the GNU/MinGW ABI.
   # Pin the upstream archive; MSYS2 supplies its native linker and libraries.
@@ -2271,6 +2246,7 @@ jobs:
           make index-grow-race large-cache-race nested-spawn-uaf explicit-collect-barrier
           make stw-slot-precision heap-counters counter-loss interior-only-buffer unaligned-only-buffer
           make stw-mt-sample idle-release
+          ci/sound-suite.sh
 
   # Darwin x86_64. No other job runs a Darwin x86_64 build: `make
   # darwin-typecheck` compiles it from Linux, which proves the types and not
@@ -2298,6 +2274,7 @@ jobs:
           make darwin-stw-resume
           make thread-birth-fiber
           make stw-index-race
+          ci/sound-suite.sh
 
   test-macos:
     runs-on: macos-latest
