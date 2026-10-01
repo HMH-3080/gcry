@@ -193,7 +193,9 @@ if ARGV.includes?("--child")
   # Crystal installs its own handler during `GC.init`, so gcry's has to be armed
   # here, in the child, rather than anywhere inside the heap's own startup.
   # Without it a fault prints an address and nothing that locates it.
-  Gcry::SegvReport.install if ENV["GCRY_SEGV_REPORT"]? == "1"
+  {% unless flag?(:win32) %}
+    Gcry::SegvReport.install if ENV["GCRY_SEGV_REPORT"]? == "1"
+  {% end %}
 
   {% if flag?(:linux) %}
     LibC.prctl(PR_SET_PTRACER, UInt64::MAX, 0_u64, 0_u64, 0_u64) if ENV["GCRY_ANY_PTRACER"]? == "1"
@@ -321,6 +323,13 @@ if ARGV.includes?("--child")
     STDOUT.puts "type_id Thread #{Thread.current.crystal_type_id}"
     STDOUT.puts "type_id Array(Bytes) #{Array(Bytes).new(1).crystal_type_id}"
   end
+  # The signal handler's counters exist only where the stop is a signal.
+  stw_note = {% if flag?(:linux) %}
+               "handler_calls #{Gcry::Platform.stw_handler_calls}, sp_zero #{Gcry::Platform.stw_sp_zero}, " \
+               "records #{Gcry::Platform.stw_records}, "
+             {% else %}
+               ""
+             {% end %}
 
   # `rel_remapped` is the double-release tripwire's engagement counter: if it
   # reads 0 while `rel_double` is high, the tripwire is counting reuse it
@@ -340,8 +349,7 @@ if ARGV.includes?("--child")
        "bss_lost #{Gcry::Platform.static_root_bss_lost}, " \
        "stash_damaged #{stash_damaged}, ballast_seen #{ballast_seen}, " \
        "greg_candidates #{heap.thread_greg_candidates}, greg_total #{heap.thread_greg_words_total}, " \
-       "handler_calls #{Gcry::Platform.stw_handler_calls}, sp_zero #{Gcry::Platform.stw_sp_zero}, " \
-       "records #{Gcry::Platform.stw_records}, " \
+       "#{stw_note}" \
        "staged_waits #{heap.stw_staged_waits}, staged_timeouts #{heap.stw_staged_wait_timeouts}, " \
        "static_min #{heap.static_scanned_min}, static_max #{heap.static_scanned_max}, " \
        "static_drops #{heap.static_scanned_drops}, " \
