@@ -35,6 +35,14 @@ module Gcry
       @size == 0
     end
 
+    # `empty?` for a reader that does not hold the lock guarding the stack:
+    # a parallel-mark worker deciding whether a pop is worth taking that lock.
+    # A stale answer only delays it. The load is atomic so it is redone on
+    # every call rather than hoisted out of the caller's spin.
+    def empty_unlocked? : Bool
+      Atomic::Ops.load(pointerof(@size), LLVM::AtomicOrdering::Monotonic, true) == 0
+    end
+
     # One word per entry, deliberately.
     #
     # Phase 7.6 first tried carrying the chunk beside the header, per the plan's

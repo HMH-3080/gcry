@@ -337,7 +337,16 @@ module Gcry
     # Live objects are reclaimed. Counting under the lock closes it: an
     # observer holding the lock cannot see the stack lose entries without
     # seeing the taker become busy.
+    #
+    # An idle worker used to take the lock on every poll to find the stack
+    # empty, and every take is a write to the lock's line, so pollers slowed
+    # whoever had work to push. On native Windows arm64 a 256-chain mark still
+    # took 33–44 s against 1 s serial after the local drain above, and
+    # `parallel-mark-termination` did not finish in 600 s (2026-10-01). The
+    # unlocked peek is safe: a worker that sees an empty stack takes nothing,
+    # is not counted busy, and polls again.
     protected def pop_mark_batch(into : Pointer(Void*), cap : Int32) : Int32
+      return 0 if @mark_stack.empty_unlocked?
       @mark_lock.lock
       n = 0
       while n < cap && !@mark_stack.empty?
