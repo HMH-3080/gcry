@@ -121,6 +121,16 @@ module Gcry
           raise ex
         end
         @world_stopped = true
+        # Every thread is suspended and its registers read. A stall from here
+        # to PHASE_FLUSH is not the suspension, and was reported as `suspend`
+        # on these two platforms until 2026-10-01 (`bench/stw_watchdog.cr`).
+        StwWatchdog.enter(StwWatchdog::PHASE_STOPPED)
+        if (tstall = @stw_test_stopped_stall_ms) > 0
+          deadline = Gcry::Clock.monotonic_ns &+ tstall &* 1_000_000_u64
+          while Gcry::Clock.monotonic_ns < deadline
+            Intrinsics.pause
+          end
+        end
         {% if flag?(:win32) %}
           Thread.unsafe_each do |thread|
             id = thread.to_unsafe.address

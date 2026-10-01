@@ -77,31 +77,37 @@ armed_stalled = run_child(self_path, {
 })
 armed_quiet = run_child(self_path, {"GCRY_STW_WATCHDOG_MS" => QUIET_THRESHOLD_MS.to_s})
 unarmed_stalled = run_child(self_path, {"GCRY_STW_TEST_STALL_MS" => STALL_MS.to_s})
+# Linux stops with a signal and then waits for each thread to acknowledge it;
+# that wait is what the suspend, in-spin and post-suspend arms exercise. macOS
+# and Windows suspend each thread synchronously and have no wait loop, so
+# those three arms do not run there.
+SIGNAL_STOP = {{ flag?(:linux) }}
+
 # The suspend phase is a different one, and it is the only one the aarch64 hang
 # has ever been seen in (2026-08-22, run `32575506486`). Its report names the
 # thread being waited for, which `GCRY_STW_TEST_STALL_MS` cannot exercise
 # because it holds thread-stacks instead.
-armed_suspend = run_child(self_path, {
+armed_suspend = SIGNAL_STOP ? run_child(self_path, {
   "GCRY_STW_WATCHDOG_MS"           => THRESHOLD_MS.to_s,
   "GCRY_STW_TEST_SUSPEND_STALL_MS" => STALL_MS.to_s,
-})
+}) : ""
 
 # And the report that runs *inside* the suspend wait rather than outside it: it
 # is the only one that can ask whether the thread being waited for is still
 # there. Fired by lowering its spin threshold, since arranging a thread that
 # genuinely never answers is the defect itself.
-armed_inspin = run_child(self_path, {
+armed_inspin = SIGNAL_STOP ? run_child(self_path, {
   "GCRY_STW_WATCHDOG_MS"     => THRESHOLD_MS.to_s,
   "GCRY_SUSPEND_STALL_SPINS" => "1",
-})
+}) : ""
 
 # The same phase, stalled *after* the wait loop instead of before it. CI showed
 # this shape on aarch64 (run 32638359761) and the report called it "waiting for
 # thread 0x0" — the breadcrumb the loop had just cleared, read as a thread.
-armed_postsuspend = run_child(self_path, {
+armed_postsuspend = SIGNAL_STOP ? run_child(self_path, {
   "GCRY_STW_WATCHDOG_MS"               => THRESHOLD_MS.to_s,
   "GCRY_STW_TEST_POSTSUSPEND_STALL_MS" => STALL_MS.to_s,
-})
+}) : ""
 
 # The span after the suspend wait, which used to report as `suspend` and is
 # where the aarch64 hangs land (32698202277). Split into its own phase; this is
@@ -123,9 +129,11 @@ armed_presuspend = run_child(self_path, {
 record["armed+stalled"] = armed_stalled
 record["armed+presusp"] = armed_presuspend
 record["armed+stopped"] = armed_stopped
-record["armed+suspend"] = armed_suspend
-record["armed+postsusp"] = armed_postsuspend
-record["armed+in-spin"] = armed_inspin
+if SIGNAL_STOP
+  record["armed+suspend"] = armed_suspend
+  record["armed+postsusp"] = armed_postsuspend
+  record["armed+in-spin"] = armed_inspin
+end
 record["armed+quiet"] = armed_quiet
 record["unarmed+stalled"] = unarmed_stalled
 
@@ -169,7 +177,7 @@ unless armed_stopped.includes?("phase=stopped-before-flush")
               "suspend wait and the flush is still reported as `suspend`"
 end
 
-unless armed_postsuspend.includes?("the stall is after the wait loop")
+if SIGNAL_STOP && !armed_postsuspend.includes?("the stall is after the wait loop")
   failures << "a stall after the suspend loop did not say so — the report is " \
               "reading the cleared breadcrumb as a thread again"
 end
@@ -206,24 +214,26 @@ end
 # The suspend arm: it must fire, name that phase, and name a thread. A report
 # that says "stalled in suspend" and stops there is what the first sighting of
 # the aarch64 hang produced, and it is one question short.
-unless armed_suspend.includes?("phase=suspend")
-  failures << "the suspend stall did not fire or named another phase — the report that " \
-              "names the thread a stopped world is waiting for is unproven"
-end
-unless armed_suspend.includes?("to acknowledge its suspend signal")
-  failures << "the suspend arm fired without naming the thread it was waiting for"
-end
-if m = armed_suspend.match(/(\d+) of (\d+) already have/)
-  if m[2].to_i == 0
-    failures << "the suspend report counted 0 threads to wait for, so its count says nothing"
+if SIGNAL_STOP
+  unless armed_suspend.includes?("phase=suspend")
+    failures << "the suspend stall did not fire or named another phase — the report that " \
+                "names the thread a stopped world is waiting for is unproven"
   end
-else
-  failures << "the suspend report carried no acknowledged/expected count"
-end
+  unless armed_suspend.includes?("to acknowledge its suspend signal")
+    failures << "the suspend arm fired without naming the thread it was waiting for"
+  end
+  if m = armed_suspend.match(/(\d+) of (\d+) already have/)
+    if m[2].to_i == 0
+      failures << "the suspend report counted 0 threads to wait for, so its count says nothing"
+    end
+  else
+    failures << "the suspend report carried no acknowledged/expected count"
+  end
 
-unless armed_inspin.includes?("SUSPEND STALLED on thread 0x")
-  failures << "the in-spin report never fired with its threshold at one spin — the line that " \
-              "names the thread a stop is waiting for is unproven"
+  unless armed_inspin.includes?("SUSPEND STALLED on thread 0x")
+    failures << "the in-spin report never fired with its threshold at one spin — the line that " \
+                "names the thread a stop is waiting for is unproven"
+  end
 end
 # With every thread healthy the handle must read live; the other branch is the
 # defect and cannot be arranged here.

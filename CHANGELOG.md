@@ -42,6 +42,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is already on it, and the counters of the ways a block can reach a bucket
   twice, then aborts (`bench/log/linux/2026-09-30-campaign-037/`).
 
+- **macOS and Windows: `GCRY_STW_WATCHDOG_MS` names a stall after the
+  suspension as `stopped-before-flush`.** It reported it as `suspend`, because
+  only Linux's stop entered that phase. `bench/stw_watchdog.cr` now runs on
+  both platforms, without the arms for Linux's signal-acknowledgement wait.
+
 ## [0.32.0] - 2026-09-30
 
 ### Fixed
