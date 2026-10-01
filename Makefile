@@ -198,7 +198,7 @@ parallel-mark-process: $(BIN)
 
 # Parallel mark under thread churn. A helper late to see a cycle end took the
 # finalizer pass's work without the lock, and live objects were reclaimed:
-# `thread_storm` with 4 workers failed 182 of 729 runs, 0 of 732 after the fix
+# `thread_storm` with 4 workers failed 525 of 3 345 runs, 0 of 3 345 after the fix
 # (bench/log/linux/2026-10-01-parallel-mark-late-pop/). Ten runs miss a
 # regression of that size about 6% of the time. ~15 s.
 .PHONY: parallel-mark-stress

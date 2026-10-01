@@ -48,9 +48,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   for the finalizer pass with no lock, and push its own finds with no lock
   either, losing entries. Explicitly rooted blocks read back as freed, and
   runtime objects such as the fiber list's mutex were overwritten. With 4
-  workers, `thread_storm` failed 182 of 729 runs and `stw_mt` about 1%. The
+  workers, `thread_storm` failed 525 of 3 345 runs and `stw_mt` about 1%. The
   cycle's start and end now happen under the mark lock, and a late helper
-  takes nothing: 0 of 732 and 0 of 1 462
+  takes nothing: 0 of 3 345 and 0 of 6 692
   (`bench/log/linux/2026-10-01-parallel-mark-late-pop/`).
 
 ### Changed

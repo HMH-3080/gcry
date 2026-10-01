@@ -716,7 +716,7 @@ jobs:
           make parallel-mark-process
 
       # A helper late to see a cycle end took the finalizer pass's work
-      # without the lock; `thread_storm` with 4 workers failed 182 of 729 runs.
+      # without the lock; `thread_storm` with 4 workers failed 525 of 3 345 runs.
       - name: Parallel mark under thread churn
         run: |
           make parallel-mark-stress

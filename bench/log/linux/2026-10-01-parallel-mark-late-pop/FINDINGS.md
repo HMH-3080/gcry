@@ -45,12 +45,17 @@ property check, or hung:
 
 | binary | `stw_mt` (`+pm4`, `+pm4+diag`) | `thread_storm+pm4` |
 |---|---:|---:|
-| `5309d38` (before the day's parallel-mark work) | 17 of 1 749 | 182 of 729 |
+| `5309d38` (before the day's parallel-mark work) | 17 of 1 749 | 525 of 3 345 |
 | `dc990a5` (local drain, no fix) | 1 of 404 | 7 of 201 |
-| fix | 0 of 1 462 | 0 of 732 |
+| fix | 0 of 6 692 | 0 of 3 345 |
 
-The `5309d38` thread_storm figure comes from campaign-043, which ran it in the
-same campaign as the fix. A release build of `stw_mt` with the fix and a
+The `5309d38` thread_storm figure and the fix's figures come from campaign-043
+(15.1 lane-hours). It ran the old thread_storm alongside the fixed binaries,
+five lanes for three hours. Of the 525 bad runs, 445 crashed or failed and
+80 hung. The fix's six `stw_mt` timeouts all have the upstream shape: two
+threads at `parallel/scheduler.cr:97`, no collector frame and no STW report
+(crystal-lang/crystal#17486). The `5309d38` `stw_mt` 17 include 4 hangs that
+were not classified. A release build of `stw_mt` with the fix and a
 probe on the refusal branch (`PROBE late pop refused with work on the
 stack`) ran 2 258 times. It had 0 failures, and in 3 runs a late pop found
 work on the stack and was refused. Before the fix, each of those would have
