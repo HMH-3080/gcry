@@ -60,3 +60,25 @@ probe on the refusal branch (`PROBE late pop refused with work on the
 stack`) ran 2 258 times. It had 0 failures, and in 3 runs a late pop found
 work on the stack and was refused. Before the fix, each of those would have
 been the race.
+
+## macOS and Windows after the fix
+
+`GCRY_PARALLEL_MARK=4`, `stw_mt` and `thread_storm` alternating for 60 minutes
+per runner, each run bounded by `bench/run_bounded.sh` (probe
+`probe-pmstress`):
+
+| runner | runs | failed | stalled |
+|---|---:|---:|---:|
+| macos-latest | 1 100 | 0 | 4, all classified upstream by `sample` |
+| macos-15-intel | 1 226 | 0 | 0 |
+| windows-latest | 1 566 | 0 | 4 (`stw_mt`; no debugger to classify) |
+| windows-11-arm, native | 1 758 | 0 | 1 (`stw_mt`) |
+
+The Windows stalls were then captured with `cdb` against a `--debug` build
+(probe `probe-winstall`, `stw_mt` alone for 70 minutes per job). With 4
+workers, 3 of 3 762 runs hung; serial, 1 of 2 051. In every capture the main
+thread is in the Parallel scheduler's `find_next_runnable` → `yield` →
+`yield_current`, the other schedulers wait on IOCP, the mark helpers sleep in
+`mark_worker_loop`, and no thread has a collector frame. That is Windows'
+shape of crystal-lang/crystal#17486, and parallel mark does not change its rate.
+
