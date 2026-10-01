@@ -195,10 +195,25 @@ puts "  warm budget / threshold, MB: #{budget.join(" -> ")}"
 # The burst is 64 MiB of garbage. With less than a quarter of it in empty
 # chunks, something held it, and whether those chunks go dormant is not what
 # failed.
+#
+# That run is inconclusive, so the gate runs itself again, up to
+# RETENTION_ATTEMPTS times, before calling it a failure. The holder was a
+# stale word, not a reference. It held the 5.9 MB outer buffer
+# at an odd offset (`block+1698845` locally, `+3418133` in CI run
+# 36799165922), seeded as "parked". The rate was 1 in 100 for the inert arm
+# locally and 3 jobs in ~120 on Linux CI (2026-10-01). At that rate, three
+# retentions in a row is about 1 in 10^5–10^6.
+RETENTION_ATTEMPTS = 3
 if empty < 16_u64 << 20
-  puts "FAIL: the burst was retained: #{after // 1024} MB resident after the collect and only #{empty >> 20} MB of empty chunks. " \
+  attempt = ENV["PARALLEL_DORMANT_ATTEMPT"]?.try(&.to_i?) || 1
+  puts "#{attempt < RETENTION_ATTEMPTS ? "INCONCLUSIVE" : "FAIL"}: the burst was retained: #{after // 1024} MB resident after the collect and only #{empty >> 20} MB of empty chunks. " \
        "A root held the dropped objects (see the seeds above); this says nothing about the release"
   Burst.search_holders
+  if attempt < RETENTION_ATTEMPTS
+    puts "  running again (attempt #{attempt + 1} of #{RETENTION_ATTEMPTS})"
+    STDOUT.flush
+    Process.exec(Process.executable_path.not_nil!, ARGV, env: {"PARALLEL_DORMANT_ATTEMPT" => (attempt + 1).to_s})
+  end
   exit 1
 end
 if expect_dormant && dormant == 0
