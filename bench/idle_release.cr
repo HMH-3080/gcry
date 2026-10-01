@@ -167,7 +167,10 @@ end
 # queued at exit; anything more is the idle collector holding them back. The
 # first version deferred them to the next *ordinary* collection, and idle
 # collections made those rare: 2 999 of 8 000 had run, against 7 799 off.
-fin_due = (rounds - 2).to_i64 * 200
+# One more burst of slack: a conservative word can keep one finalizable
+# object alive past its burst, and macos-latest ran 7 599 of the 7 600 the
+# tighter bound required (2026-10-01). That defect is ~4 800 short.
+fin_due = (rounds - 3).to_i64 * 200
 if fin_ran < fin_due
   puts "FAIL: #{fin_ran} finalizers ran, #{fin_due} were due — the idle collector is holding them back"
   fail = true
