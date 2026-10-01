@@ -1224,10 +1224,19 @@ jobs:
         with:
           crystal: "1.21.0"
 
+      # Bounded and retried: on 2026-10-01 this install sat on a slow mirror
+      # until the job's 20 minutes ran out, twice in a row. A stuck download is
+      # killed at 4 minutes and tried again; the packages that did arrive are
+      # kept between tries.
       - name: Install the ASan compiler and runtime
+        timeout-minutes: 14
         run: |
-          sudo apt-get update
-          sudo apt-get install -y clang-19
+          timeout 240 sudo apt-get update -qq -o Acquire::http::Timeout=30 -o Acquire::Retries=2 || true
+          for attempt in 1 2 3; do
+            timeout 240 sudo apt-get install -y -o Acquire::http::Timeout=30 -o Acquire::Retries=2 clang-19 && exit 0
+            sleep $((attempt * 10))
+          done
+          exit 1
 
       - name: Build full spec binary
         run: |
