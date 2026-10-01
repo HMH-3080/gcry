@@ -1797,6 +1797,11 @@ jobs:
           # The GCRY_SOUND=1 profile and suite: x86_64 runs it, and this is
           # the arch where register roots were first found missing.
           t timeout 600 ci/sound-suite.sh
+          # Parallel mark on a weakly ordered CPU: on native Windows arm64 its
+          # gate hung until 2026-10-01, because every node of a chain crossed
+          # one contended lock twice. Not run on this arch before.
+          t timeout 300 make parallel-mark-process
+          t timeout 600 make parallel-mark-termination
           t timeout 300 make stack-bounds-growth
           # This is the runner the question came from. `scheduler_roots
           # --control` reports one thread outside Crystal's list on every
