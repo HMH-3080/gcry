@@ -3808,7 +3808,10 @@ draw of `bench/log/macos/2026-08-10-053800/` — which is what makes it schedula
       Darwin should default to `GCRY_HEAP_COUNTERS_ATOMIC=1`. That cost was not
       resolvable on Linux. Until then the gate is not run in the Darwin gates
       job. The loss only skews GC timing (`bytes_since_gc`, `live_objects`); it
-      does not reclaim anything.
+      does not reclaim anything. A probe the same day ran 12 runs each of the
+      plain arm, the plain arm with `GCRY_IDLE_RELEASE_MS=0`, and the atomic
+      arm on macos-15-intel. All 36 counted 0, so it is too rare to bisect at
+      that budget.
 - [ ] **Two collector locks are unfair to a waiter under back-to-back
       collections (Windows, 2026-09-30).** Both were found with `cdb` on
       hung CI probes, and both are livelocks: the collector was still
