@@ -82,37 +82,46 @@ puts "#{WORKERS} allocating threads, #{ROUNDS} collections per arm"
 # what makes the collections frequent. Same shape as the arm that crashes.
 base = {"GCRY_INDEX_AUDIT" => "1"}
 
+# The late-clear arm only has to show the reads coming back, once. On
+# macos-latest it counted 7–96 per child (2026-10-01), close enough to zero
+# that it gets up to RED_TRIES children and stops at the first non-zero one.
+RED_TRIES = 4
+
 {"default" => {} of String => String, "late-clear" => {"GCRY_STW_LATE_CLEAR" => "1"}}.each do |arm, extra|
   env = base.merge(extra)
-  result = BoundedChild.run(exe, ["--child"], env)
-  text = result.output
-  line = text.lines.find(&.starts_with?("owner="))
-  unless line && result.ok
-    failures << "#{arm}: the child did not report#{result.timed_out ? " (killed on the deadline)" : ""}. It said:\n#{text.lines.first(6).join("\n")}"
-    next
-  end
-  fields = line.split(' ').to_h { |f| {f.split('=')[0], f.split('=')[1]} }
-  owner = fields["owner"].to_u64
-  foreign = fields["foreign"].to_u64
-  puts "  %-11s unlocked reads: collector %d, other threads %d (last 0x%s)" %
-       [arm, owner, foreign, fields["foreign_id"].lchop("0x")]
+  tries = arm == "default" ? 1 : RED_TRIES
+  foreign_seen = 0_u64
+  tries.times do
+    result = BoundedChild.run(exe, ["--child"], env)
+    text = result.output
+    line = text.lines.find(&.starts_with?("owner="))
+    unless line && result.ok
+      failures << "#{arm}: the child did not report#{result.timed_out ? " (killed on the deadline)" : ""}. It said:\n#{text.lines.first(6).join("\n")}"
+      break
+    end
+    fields = line.split(' ').to_h { |f| {f.split('=')[0], f.split('=')[1]} }
+    owner = fields["owner"].to_u64
+    foreign = fields["foreign"].to_u64
+    foreign_seen += foreign
+    puts "  %-11s unlocked reads: collector %d, other threads %d (last 0x%s)" %
+         [arm, owner, foreign, fields["foreign_id"].lchop("0x")]
 
-  # A zero on either side is only evidence if the path ran at all.
-  if owner == 0
-    failures << "#{arm}: the collector never took the unlocked path, so this arm never " \
-                "exercised the window and its foreign count says nothing"
+    # A zero on either side is only evidence if the path ran at all.
+    if owner == 0
+      failures << "#{arm}: the collector never took the unlocked path, so this arm never " \
+                  "exercised the window and its foreign count says nothing"
+    end
+    break if foreign > 0
   end
 
   if arm == "default"
-    if foreign > 0
-      failures << "default: #{foreign} unlocked chunk-index read(s) by a thread that is not the " \
+    if foreign_seen > 0
+      failures << "default: #{foreign_seen} unlocked chunk-index read(s) by a thread that is not the " \
                   "collector, while the world was stopped — the lock skip is unsound"
     end
-  else
-    if foreign == 0
-      failures << "late-clear: the old ordering produced no unlocked reads, so the arm above " \
-                  "cannot be credited to the new one"
-    end
+  elsif foreign_seen == 0
+    failures << "late-clear: the old ordering produced no unlocked reads in #{RED_TRIES} children, so the " \
+                "arm above cannot be credited to the new one"
   end
 end
 
