@@ -43,8 +43,7 @@ if ARGV.includes?("--child")
   4.times do
     Thread.new do
       while stop.get == 0
-        req = LibC::Timespec.new(tv_sec: 0, tv_nsec: 2_000_000)
-        LibC.nanosleep(pointerof(req), Pointer(LibC::Timespec).null)
+        Thread.sleep(2.milliseconds)
       end
     end
   end

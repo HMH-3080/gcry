@@ -85,7 +85,9 @@ if ARGV.includes?("--child")
   # either: Crystal installs its own SIGSEGV handler after `GC.init` and does
   # not chain, so anything installed during the first allocation is discarded.
   # Here is after that, and it is the harness that wants the answer.
-  Gcry::SegvReport.install if ENV["GCRY_SEGV_REPORT"]? == "1"
+  {% unless flag?(:win32) %}
+    Gcry::SegvReport.install if ENV["GCRY_SEGV_REPORT"]? == "1"
+  {% end %}
   heap = Gcry.default_heap
   # Retain enough that a freed block stays cached for the next allocation to
   # take, which is the hit path `take_large_free` exists for. The trimmer then

@@ -55,10 +55,9 @@ if ARGV.includes?("--child")
       # lookups below are asking about an address the heap no longer owns —
       # which is a different question from the one this gate asks.
       heap.add_root(probe)
-      req = LibC::Timespec.new(tv_sec: 0, tv_nsec: 50_000)
       while stop.get == 0
         16.times { heap.live?(probe) }
-        LibC.nanosleep(pointerof(req), Pointer(LibC::Timespec).null)
+        Thread.sleep(50.microseconds)
       end
     end
   end

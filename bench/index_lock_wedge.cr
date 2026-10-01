@@ -131,7 +131,7 @@ while Time.instant < short_deadline
   sleep 100.milliseconds
 end
 unless short_finished
-  short_child.signal(Signal::KILL)
+  short_child.terminate(graceful: false)
   short_child.wait
 end
 puts "a 1.5 s hold: the child #{short_finished ? "finished" : "did NOT finish"}"
@@ -153,7 +153,7 @@ end
 unless finished
   # Expected on the hold arm: the collector is spinning on a lock a frozen
   # thread owns, and nothing will resume that thread.
-  child.signal(Signal::KILL)
+  child.terminate(graceful: false)
   child.wait
 end
 text = captured.to_s
