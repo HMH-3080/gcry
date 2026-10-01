@@ -3798,6 +3798,16 @@ draw of `bench/log/macos/2026-08-10-053800/` — which is what makes it schedula
       Windows arm64 (`bench/log/linux/2026-10-01-parallel-mark-local-first/`).
       What stays Linux-only, and why, is in
       `bench/log/macos/2026-10-01-gate-coverage/`.
+- [x] **`GCRY_PARALLEL_MARK` reclaimed live objects — closed 2026-10-01.**
+      Found by the first stress lanes ever run with parallel mark on
+      (campaign-042). A mark helper late to see a cycle end took work the
+      master was pushing for the finalizer pass with no lock. With 4 workers,
+      `thread_storm` failed 525 of 3 345 runs on the tree before the fix and 0
+      of 3 345 after; `stw_mt` failed about 1% before and 0 of 6 692 after.
+      0 failures in 5 650 more runs on macOS and Windows. New gate `make
+      parallel-mark-stress` in every job that runs the parallel-mark gates
+      (`bench/log/linux/2026-10-01-parallel-mark-late-pop/`). Parallel mark
+      stays experimental.
 - [ ] **Plain heap counters lost an increment on Intel macOS (2026-10-01).**
       `make counter-loss`'s plain arm, which is the shipped default, counted 1
       lost increment in 983 361 comparisons on macos-15-intel CI (run
