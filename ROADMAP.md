@@ -3785,6 +3785,18 @@ draw of `bench/log/macos/2026-08-10-053800/` — which is what makes it schedula
       fault, and has a budget of 32 attempts (misses at ~3e-9). Locally it
       finishes in 0.3 s; with the control knobs emptied it fails after 32
       (rc 1).
+- [x] **Linux gates on macOS and Windows — closed 2026-10-01.** About 70
+      `make` gates ran on Linux only. Coverage probes ran them on macos-latest,
+      windows-latest and native windows-11-arm, and the ones that hold there
+      are now four CI jobs: `test (darwin native, gates)`, `test (windows
+      x86_64, gates)`, `test (windows arm64, gates)`, and the `GCRY_SOUND=1`
+      suite in each (`ci/sound-suite.sh`). The probes found two product bugs.
+      Darwin read the chunk index unlocked after a resume
+      (`bench/log/macos/2026-10-01-darwin-index-late-clear/`), and parallel
+      mark stalled on narrow graphs on every platform, which became a hang on
+      Windows arm64 (`bench/log/linux/2026-10-01-parallel-mark-local-first/`).
+      What stays Linux-only, and why, is in
+      `bench/log/macos/2026-10-01-gate-coverage/`.
 - [ ] **Two collector locks are unfair to a waiter under back-to-back
       collections (Windows, 2026-09-30).** Both were found with `cdb` on
       hung CI probes, and both are livelocks: the collector was still
