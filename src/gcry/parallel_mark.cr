@@ -348,6 +348,19 @@ module Gcry
     protected def pop_mark_batch(into : Pointer(Void*), cap : Int32) : Int32
       return 0 if @mark_stack.empty_unlocked?
       @mark_lock.lock
+      # The cycle can end between a worker's `while @mark_parallel` and this
+      # lock. After it ends, the master pushes onto `@mark_stack` and drains it
+      # with no lock: the finalizer pass between two `mark_loop`s, for one.
+      # A late worker that popped there raced those unlocked pushes and pops.
+      # It then pushed its own children unlocked, since `mark_stack_push` reads
+      # `@mark_parallel` false, and live objects went unmarked: `stw_mt` with
+      # `GCRY_PARALLEL_MARK=4` lost explicitly rooted blocks or crashed in
+      # about 1% of runs (2026-10-01). Both transitions happen under this lock,
+      # so a pop here sees the cycle it belongs to or none.
+      unless @mark_parallel
+        @mark_lock.unlock
+        return 0
+      end
       n = 0
       while n < cap && !@mark_stack.empty?
         into[n] = @mark_stack.pop.as(Void*)
@@ -484,7 +497,11 @@ module Gcry
 
       Heap.mark_worker = 0
       ensure_pushbuf(0)
+      # Under the lock, which also publishes the master's unlocked pushes
+      # above to a worker that sees `true` under it (see `pop_mark_batch`).
+      @mark_lock.lock
       @mark_parallel = true
+      @mark_lock.unlock
       @mark_epoch.add(1)
       batch = uninitialized StaticArray(Void*, MARK_POP_BATCH)
       begin
@@ -510,7 +527,9 @@ module Gcry
           Intrinsics.pause
         end
       ensure
+        @mark_lock.lock
         @mark_parallel = false
+        @mark_lock.unlock
         @mark_epoch.add(1)
         until @mark_workers_busy.get == 0
           Intrinsics.pause

@@ -43,6 +43,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `make stw-index-race` runs on macOS and Windows with `GCRY_STW_LATE_CLEAR=1`
   as its red arm (`bench/log/macos/2026-10-01-darwin-index-late-clear/`).
 
+- **`GCRY_PARALLEL_MARK`: live objects were reclaimed.** A mark helper
+  that was late to see a cycle end could take work the master was pushing
+  for the finalizer pass with no lock, and push its own finds with no lock
+  either, losing entries. Explicitly rooted blocks read back as freed, and
+  runtime objects such as the fiber list's mutex were overwritten. With 4
+  workers, `thread_storm` failed 182 of 729 runs and `stw_mt` about 1%. The
+  cycle's start and end now happen under the mark lock, and a late helper
+  takes nothing: 0 of 732 and 0 of 1 462
+  (`bench/log/linux/2026-10-01-parallel-mark-late-pop/`).
+
 ### Changed
 
 - **A cycle in a large-object freelist bucket aborts with a report instead of
