@@ -17,5 +17,5 @@ rate.
 No FATAL cycle report. With campaigns 038 and 039 that is about 1 180 bounded
 runs of the bucket walk and none hit the bound. [INFERENCE] The one spin was
 1 in 288 runs before the bound; at that rate, 0 in 1 180 has probability
-about 1.6%. So either what made the cycle stopped happening in these trees,
+about 1.7%. So either what made the cycle stopped happening in these trees,
 or the cycle needed something the campaign shape does not provide.
