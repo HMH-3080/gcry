@@ -17,6 +17,12 @@ counter-loss, interior-only-buffer, unaligned-only-buffer, stw-mt-sample.
 
 `thread-uaf-sample` passed but took 354 s and is left out.
 
+Later on 2026-10-01 `counter-loss` was taken back out. On macos-15-intel CI its
+plain arm, the shipped default, counted 1 lost increment in 983 361
+comparisons. It is open in ROADMAP. `thread-birth-root --churn` read 17
+against a bound of 16 on macos-latest, because two threads alive before the
+churn hold their roots throughout. The bound now sits on top of them.
+
 ## Failed on the shipped arm: a Darwin bug
 
 `stw-index-race`: 90 unlocked chunk-index reads by mutators during a stop.
